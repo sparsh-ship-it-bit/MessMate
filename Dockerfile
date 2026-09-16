@@ -9,8 +9,8 @@ FROM golang:1.24-alpine AS backend
 WORKDIR /app
 RUN apk add --no-cache git
 COPY go.mod ./
-RUN go mod download
 COPY . .
+RUN go mod tidy
 COPY --from=frontend /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -o messmate ./cmd/server
 
