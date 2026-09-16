@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS consumers (
     consumer_id VARCHAR(50) NOT NULL,
     name VARCHAR(120) NOT NULL,
     phone VARCHAR(20) NOT NULL,
-    meal_plan VARCHAR(30) NOT NULL DEFAULT 'all',
+    meal_plan VARCHAR(100) NOT NULL DEFAULT 'all',
     qr_token UUID NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -28,11 +28,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     amount NUMERIC(12,2) NOT NULL CHECK(amount >= 0),
+    amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK(amount_paid >= 0),
     month_label VARCHAR(30) NOT NULL,
     payment_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(payment_status IN ('paid','pending','partial')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK(end_date >= start_date)
+    CHECK(end_date >= start_date),
+    CHECK(amount_paid <= amount)
 );
+
+ALTER TABLE consumers ALTER COLUMN meal_plan TYPE VARCHAR(100);
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
