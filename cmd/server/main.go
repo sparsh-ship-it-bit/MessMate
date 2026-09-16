@@ -40,6 +40,7 @@ func main() {
     dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")
     db, err := sql.Open("postgres", dsn); if err != nil { log.Fatal(err) }
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
+    if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
     app := &App{db: db, jwtSecret: []byte(getenv("JWT_SECRET", "dev-secret-change-me")), ttl: time.Duration(ttlHours)*time.Hour}
     mux := http.NewServeMux()
@@ -59,10 +60,11 @@ func main() {
     mux.HandleFunc("POST /api/v1/payments", app.auth(app.createPayment))
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
+    registerWeb(mux)
 
     handler := cors(logging(mux))
     port := getenv("PORT", "8080")
-    log.Printf("MessMate API listening on :%s", port)
+    log.Printf("MessMate listening on :%s", port)
     log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
@@ -71,7 +73,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) { w.Header().Set("Conte
 func errorJSON(w http.ResponseWriter, status int, msg string) { writeJSON(w,status,map[string]string{"error":msg}) }
 func decode(r *http.Request, v any) error { return json.NewDecoder(r.Body).Decode(v) }
 
-func (a *App) health(w http.ResponseWriter, r *http.Request) { writeJSON(w,200,map[string]string{"status":"ok","service":"messmate-api"}) }
+func (a *App) health(w http.ResponseWriter, r *http.Request) { writeJSON(w,200,map[string]string{"status":"ok","service":"messmate"}) }
 
 func (a *App) register(w http.ResponseWriter, r *http.Request) {
     var req authRequest; if decode(r,&req)!=nil || req.Name=="" || req.Email=="" || len(req.Password)<8 { errorJSON(w,400,"name, email and password (8+ chars) are required"); return }
@@ -109,7 +111,7 @@ func (a *App) auth(next http.HandlerFunc) http.HandlerFunc { return func(w http.
 func ownerID(r *http.Request)(uuid.UUID,error){v:=r.Context().Value(ownerKey); id,ok:=v.(uuid.UUID);if !ok{return uuid.Nil,errors.New("owner missing")};return id,nil}
 
 func (a *App) dashboard(w http.ResponseWriter,r *http.Request){
-    oid,_:=ownerID(r); var active,expiring,pending int; var collections,attendance int
+    oid,_:=ownerID(r); var active,expiring,pending int; var collections float64; var attendance int
     _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers WHERE owner_id=$1 AND active`,oid).Scan(&active)
     _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers c JOIN subscriptions s ON s.consumer_id=c.id WHERE c.owner_id=$1 AND s.end_date=CURRENT_DATE`,oid).Scan(&expiring)
     _=a.db.QueryRow(`SELECT COUNT(*) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.payment_status <> 'paid' AND s.end_date>=CURRENT_DATE`,oid).Scan(&pending)
