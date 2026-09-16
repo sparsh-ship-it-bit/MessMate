@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: messmate
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+
+  api:
+    build: .
+    depends_on:
+      - db
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://postgres:postgres@db:5432/messmate?sslmode=disable
+      JWT_SECRET: change-this-in-production
+      JWT_TTL_HOURS: 24
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
