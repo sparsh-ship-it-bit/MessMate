@@ -23,5 +23,14 @@ services:
     ports:
       - "8080:8080"
 
+  web:
+    build: ./web
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+
 volumes:
   postgres_data:
