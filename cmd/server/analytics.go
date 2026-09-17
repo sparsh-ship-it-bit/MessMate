@@ -15,9 +15,11 @@ func parseMonth(value string) (time.Time, time.Time, error) {
     return start, start.AddDate(0, 1, 0).Add(-24*time.Hour), nil
 }
 
+// A subscription becomes overdue when its coverage has ended, even if the
+// previous period was fully paid. This represents an overdue renewal.
 func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
-    if paid >= amount { return "paid" }
     if !endDate.IsZero() && endDate.Before(asOf) { return "overdue" }
+    if paid >= amount { return "paid" }
     if paid > 0 { return "partial" }
     return "pending"
 }
@@ -60,14 +62,17 @@ func (a *App) consumerProfile(w http.ResponseWriter,r *http.Request){
     type sub struct{ID uuid.UUID;Start,End time.Time;Amount,Paid float64}
     sr,err:=a.db.Query(`SELECT id,start_date,end_date,amount,amount_paid FROM subscriptions WHERE consumer_id=$1 AND start_date <= $2 AND end_date >= $3 ORDER BY end_date DESC`,id,monthEnd,monthStart);if err!=nil{errorJSON(w,500,"database error");return};defer sr.Close()
     subscriptions:=[]sub{};for sr.Next(){var s sub;if sr.Scan(&s.ID,&s.Start,&s.End,&s.Amount,&s.Paid)==nil{subscriptions=append(subscriptions,s)}}
-    var latest sub;if len(subscriptions)>0{latest=subscriptions[0]}else{_ = a.db.QueryRow(`SELECT id,start_date,end_date,amount,amount_paid FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1`,id).Scan(&latest.ID,&latest.Start,&latest.End,&latest.Amount,&latest.Paid)}
+
+    // The profile's financial status always reflects the latest subscription.
+    var latest sub
+    _=a.db.QueryRow(`SELECT id,start_date,end_date,amount,amount_paid FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1`,id).Scan(&latest.ID,&latest.Start,&latest.End,&latest.Amount,&latest.Paid)
 
     attendance:=map[string]map[string]bool{"breakfast":{},"lunch":{},"dinner":{}}
     ar,err:=a.db.Query(`SELECT attendance_date,meal FROM attendance WHERE consumer_id=$1 AND attendance_date >= $2 AND attendance_date < $3`,id,monthStart,monthStart.AddDate(0,1,0));if err==nil{defer ar.Close();for ar.Next(){var d time.Time;var meal string;if ar.Scan(&d,&meal)==nil{if _,ok:=attendance[meal];ok{attendance[meal][d.Format("2006-01-02")]=true}}}}
 
     expected:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};present:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};days:=[]map[string]any{}
     for d:=monthStart;d.Before(monthStart.AddDate(0,1,0));d=d.AddDate(0,0,1){day:=map[string]any{"date":d.Format("2006-01-02"),"breakfast":false,"lunch":false,"dinner":false};for _,s:=range subscriptions{if d.Before(s.Start)||d.After(s.End){continue};for _,m:=range []string{"breakfast","lunch","dinner"}{if plan=="all"||containsMeal(plan,m){expected[m]++;if attendance[m][d.Format("2006-01-02")]{day[m]=true}}}};for _,m:=range []string{"breakfast","lunch","dinner"}{if day[m].(bool){present[m]++}};days=append(days,day)}
-    status:=displayedPaymentStatus(latest.Paid,latest.Amount,latest.End,monthEnd)
+    status:=displayedPaymentStatus(latest.Paid,latest.Amount,latest.End,time.Now())
     writeJSON(w,200,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"meal_plan":plan,"active":active,"qr_token":qr,"subscription":map[string]any{"id":latest.ID,"start_date":formatDate(latest.Start),"end_date":formatDate(latest.End),"amount":latest.Amount,"amount_paid":latest.Paid,"due":latest.Amount-latest.Paid,"payment_status":status},"month":monthStart.Format("2006-01"),"month_label":monthStart.Format("January 2006"),"attendance":map[string]any{"present":present,"expected":expected,"days":days}})
 }
 
