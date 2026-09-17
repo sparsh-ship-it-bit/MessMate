@@ -5,6 +5,10 @@
     const r=await fetch('/api/v1/consumers',{headers:{Authorization:'Bearer '+token()}});
     const d=await r.json(); if(!r.ok) throw Error(d.error||'Could not load consumer'); return d;
   }
+  async function getRenewInfo(id){
+    const r=await fetch('/api/v1/subscriptions/renew-info/'+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token()}});
+    const d=await r.json(); if(!r.ok) throw Error(d.error||'Could not load renewal details'); return d;
+  }
   function addStyles(){
     if(document.getElementById('mm-renew-style')) return;
     const s=document.createElement('style');s.id='mm-renew-style';s.textContent=`
@@ -17,10 +21,9 @@
       @media(max-width:520px){.mm-renew-options{grid-template-columns:1fr}.mm-renew-modal{padding:20px}}
     `;document.head.appendChild(s);
   }
-  function showRenewal(c){
+  function showRenewal(c,monthly){
     addStyles();
     const old=document.getElementById('mm-renew-backdrop');if(old)old.remove();
-    const monthly=Number(c.subscription?.monthly_amount||c.subscription?.amount||0);
     const name=c.name||'Consumer';
     const el=document.createElement('div');el.id='mm-renew-backdrop';el.className='mm-renew-backdrop';
     el.innerHTML=`<div class="mm-renew-modal"><div class="mm-renew-head"><div><h3>Renew ${name}</h3><div class="mm-renew-sub">Choose the coverage you are collecting payment for.</div></div><button class="mm-renew-close" type="button">×</button></div><div class="mm-renew-options"><button class="mm-renew-option" data-period="half" type="button"><strong>Half Month</strong><span>15 days of access</span><span class="mm-renew-price">${money(monthly/2)}</span></button><button class="mm-renew-option" data-period="full" type="button"><strong>Full Month</strong><span>1 month of access</span><span class="mm-renew-price">${money(monthly)}</span></button></div><div class="mm-renew-note">Payment is recorded immediately. The new subscription starts after the current expiry date, and attendance access follows the renewed period.</div><div class="mm-renew-error" hidden></div></div>`;
@@ -41,7 +44,8 @@
     try{
       const row=b.closest('.row');const small=row&&row.querySelector('.grow small');const cid=small?.textContent.split('·')[0].trim();
       if(!cid)throw Error('Could not identify consumer');
-      const consumers=await getConsumers();const c=consumers.find(x=>x.consumer_id===cid);if(!c)throw Error('Consumer not found');showRenewal(c);
+      const consumers=await getConsumers();const c=consumers.find(x=>x.consumer_id===cid);if(!c)throw Error('Consumer not found');
+      const info=await getRenewInfo(c.id);showRenewal(c,Number(info.monthly_amount||0));
     }catch(e){alert(e.message)}
   },true);
 })();
