@@ -40,9 +40,24 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 ALTER TABLE consumers ALTER COLUMN meal_plan TYPE VARCHAR(100);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_amount NUMERIC(12,2);
-UPDATE subscriptions SET monthly_amount = amount WHERE monthly_amount IS NULL;
+UPDATE subscriptions SET monthly_amount = amount WHERE monthly_amount IS NULL OR monthly_amount = 0;
 ALTER TABLE subscriptions ALTER COLUMN monthly_amount SET DEFAULT 0;
 ALTER TABLE subscriptions ALTER COLUMN monthly_amount SET NOT NULL;
+
+CREATE OR REPLACE FUNCTION messmate_set_monthly_amount()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.monthly_amount IS NULL OR NEW.monthly_amount = 0 THEN
+        NEW.monthly_amount := NEW.amount;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_subscription_monthly_amount ON subscriptions;
+CREATE TRIGGER trg_subscription_monthly_amount
+BEFORE INSERT OR UPDATE OF amount, monthly_amount ON subscriptions
+FOR EACH ROW EXECUTE FUNCTION messmate_set_monthly_amount();
 
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
