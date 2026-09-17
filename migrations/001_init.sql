@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     amount NUMERIC(12,2) NOT NULL CHECK(amount >= 0),
+    monthly_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK(monthly_amount >= 0),
     amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK(amount_paid >= 0),
     month_label VARCHAR(30) NOT NULL,
     payment_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(payment_status IN ('paid','pending','partial')),
@@ -38,6 +39,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 ALTER TABLE consumers ALTER COLUMN meal_plan TYPE VARCHAR(100);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_amount NUMERIC(12,2);
+UPDATE subscriptions SET monthly_amount = amount WHERE monthly_amount IS NULL;
+ALTER TABLE subscriptions ALTER COLUMN monthly_amount SET DEFAULT 0;
+ALTER TABLE subscriptions ALTER COLUMN monthly_amount SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
