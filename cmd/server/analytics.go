@@ -29,8 +29,32 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     start, end, err := parseMonth(r.URL.Query().Get("month"))
     if err != nil { errorJSON(w,400,err.Error()); return }
 
+    // When a consumer is entered later with historical subscription dates,
+    // the first payment belongs to that subscription's start period rather
+    // than the date on which the owner entered the profile. Later payments
+    // remain recognized on their actual payment date.
     var earnings float64
-    _ = a.db.QueryRow(`SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN consumers c ON c.id=p.consumer_id WHERE c.owner_id=$1 AND p.paid_at >= $2 AND p.paid_at < $3`, oid,start,start.AddDate(0,1,0)).Scan(&earnings)
+    _ = a.db.QueryRow(`
+        WITH payment_revenue AS (
+            SELECT p.amount,
+                   CASE
+                       WHEN s.id IS NOT NULL AND p.id = (
+                           SELECT p2.id
+                           FROM payments p2
+                           WHERE p2.subscription_id = p.subscription_id
+                           ORDER BY p2.paid_at, p2.id
+                           LIMIT 1
+                       ) THEN s.start_date::timestamp
+                       ELSE p.paid_at
+                   END AS revenue_at
+            FROM payments p
+            JOIN consumers c ON c.id=p.consumer_id
+            LEFT JOIN subscriptions s ON s.id=p.subscription_id
+            WHERE c.owner_id=$1
+        )
+        SELECT COALESCE(SUM(amount),0)
+        FROM payment_revenue
+        WHERE revenue_at >= $2 AND revenue_at < $3`, oid,start,start.AddDate(0,1,0)).Scan(&earnings)
 
     var newConsumers int
     _ = a.db.QueryRow(`SELECT COUNT(DISTINCT s.consumer_id) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date >= $2 AND s.start_date < $3`, oid,start,start.AddDate(0,1,0)).Scan(&newConsumers)
@@ -42,7 +66,30 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,end){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
 
     type point struct { Month string `json:"month"`; Label string `json:"label"`; Earnings float64 `json:"earnings"` }
-    trendRows,err:=a.db.Query(`SELECT to_char(m,'YYYY-MM'),to_char(m,'Mon'),COALESCE(SUM(p.amount),0) FROM generate_series(date_trunc('month',$1::date)-interval '11 months',date_trunc('month',$1::date),interval '1 month') m LEFT JOIN (payments p JOIN consumers c ON c.id=p.consumer_id AND c.owner_id=$2) ON p.paid_at>=m AND p.paid_at<m+interval '1 month' GROUP BY m ORDER BY m`,start,oid)
+    trendRows,err:=a.db.Query(`
+        WITH months AS (
+            SELECT m
+            FROM generate_series(date_trunc('month',$1::date)-interval '11 months',date_trunc('month',$1::date),interval '1 month') m
+        ), payment_revenue AS (
+            SELECT p.amount,
+                   CASE
+                       WHEN s.id IS NOT NULL AND p.id = (
+                           SELECT p2.id
+                           FROM payments p2
+                           WHERE p2.subscription_id = p.subscription_id
+                           ORDER BY p2.paid_at, p2.id
+                           LIMIT 1
+                       ) THEN s.start_date::timestamp
+                       ELSE p.paid_at
+                   END AS revenue_at
+            FROM payments p
+            JOIN consumers c ON c.id=p.consumer_id AND c.owner_id=$2
+            LEFT JOIN subscriptions s ON s.id=p.subscription_id
+        )
+        SELECT to_char(m.m,'YYYY-MM'),to_char(m.m,'Mon'),COALESCE(SUM(pr.amount),0)
+        FROM months m
+        LEFT JOIN payment_revenue pr ON pr.revenue_at>=m.m AND pr.revenue_at<m.m+interval '1 month'
+        GROUP BY m.m ORDER BY m.m`,start,oid)
     if err!=nil{errorJSON(w,500,"database error");return};defer trendRows.Close()
     trend:=[]point{};for trendRows.Next(){var p point;if trendRows.Scan(&p.Month,&p.Label,&p.Earnings)==nil{trend=append(trend,p)}}
 
