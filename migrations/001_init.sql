@@ -83,3 +83,22 @@ CREATE INDEX IF NOT EXISTS idx_consumers_owner ON consumers(owner_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_end ON subscriptions(end_date);
 CREATE INDEX IF NOT EXISTS idx_payments_consumer ON payments(consumer_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date);
+
+ALTER TABLE owners ADD COLUMN IF NOT EXISTS razorpay_account_id VARCHAR(80);
+
+CREATE TABLE IF NOT EXISTS payment_intents (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE CASCADE,
+    consumer_id UUID NOT NULL REFERENCES consumers(id) ON DELETE CASCADE,
+    month_label VARCHAR(7) NOT NULL,
+    period VARCHAR(10) NOT NULL CHECK(period IN ('half','full')),
+    amount NUMERIC(12,2) NOT NULL CHECK(amount > 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','failed')),
+    provider_qr_id VARCHAR(100),
+    provider_payment_id VARCHAR(100),
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_intents_provider_payment ON payment_intents(provider_payment_id) WHERE provider_payment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_intents_owner ON payment_intents(owner_id);
+CREATE INDEX IF NOT EXISTS idx_payment_intents_qr ON payment_intents(provider_qr_id);
