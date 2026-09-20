@@ -29,62 +29,70 @@
   function closeModal(){document.getElementById('mm-pay-backdrop')?.remove()}
   async function openPayment(){
     styles();closeModal();
-    let consumers,settings;
-    try{[consumers,settings]=await Promise.all([api('/api/v1/consumers'),api('/api/v1/payments/upi-settings')])}catch(e){alert(e.message);return}
+    let consumers;
+    try{consumers=await api('/api/v1/consumers')}catch(e){alert(e.message);return}
+    let provider;
+    try{provider=await api('/api/v1/payments/provider-status')}catch(e){alert(e.message);return}
+    if(!provider.configured){alert('Online payments are not configured yet. Add Razorpay server credentials and webhook secret in Render.');return}
     const el=document.createElement('div');el.id='mm-pay-backdrop';el.className='mm-pay-backdrop';
     const firstMonth=months()[0].v;
-    el.innerHTML=`<div class="mm-pay-modal">
-      <div class="mm-pay-head"><div><h3>Collect payment</h3><div style="color:#7f8b81;font-size:12px;margin-top:4px">Select consumer → month → plan → show the mess owner's payment QR.</div></div><button class="mm-pay-close" type="button">×</button></div>
+    el.innerHTML=\`<div class="mm-pay-modal">
+      <div class="mm-pay-head"><div><h3>Collect payment</h3><div style="color:#7f8b81;font-size:12px;margin-top:4px">Payment is verified automatically. No UTR or owner confirmation is required.</div></div><button class="mm-pay-close" type="button">×</button></div>
       <div class="mm-pay-grid">
-        <label>Consumer<select id="mm-consumer">${consumers.map(c=>`<option value="${c.id}">${c.name} — ${c.consumer_id}</option>`).join('')}</select></label>
-        <label>Month<select id="mm-month">${months().map(m=>`<option value="${m.v}" ${m.v===firstMonth?'selected':''}>${m.l}</option>`).join('')}</select></label>
+        <label>Consumer<select id="mm-consumer">\${consumers.map(c=>\`<option value="\${c.id}">\${c.name} — \${c.consumer_id}</option>\`).join('')}</select></label>
+        <label>Month<select id="mm-month">\${months().map(m=>\`<option value="\${m.v}" \${m.v===firstMonth?'selected':''}>\${m.l}</option>\`).join('')}</select></label>
       </div>
       <div class="mm-pay-periods">
         <button type="button" class="mm-pay-period selected" data-period="full"><b>Full Month</b><small>1st to last day</small><div class="mm-pay-amount" id="mm-full">—</div></button>
         <button type="button" class="mm-pay-period" data-period="half"><b>Half Month</b><small>1st to 15th</small><div class="mm-pay-amount" id="mm-half">—</div></button>
       </div>
       <div id="mm-qr-area"></div>
-      <div class="mm-pay-actions"><button type="button" class="mm-pay-primary" id="mm-generate">Show payment QR</button><button type="button" class="mm-pay-ghost" id="mm-config">Set owner UPI ID</button></div>
+      <div class="mm-pay-actions"><button type="button" class="mm-pay-primary" id="mm-generate">Generate secure QR</button></div>
       <div id="mm-pay-message"></div>
-    </div>`;
+    </div>\`;
     document.body.appendChild(el);
     el.querySelector('.mm-pay-close').onclick=closeModal;
     el.onclick=e=>{if(e.target===el)closeModal()};
-    let period='full',monthly=0,info=null;
-    const consumer=()=>consumers.find(c=>c.id===el.querySelector('#mm-consumer').value);
+    let period='full',monthly=0;
+    const consumer=()=>consumers.find(x=>x.id===el.querySelector('#mm-consumer').value);
     const msg=t=>{el.querySelector('#mm-pay-message').innerHTML=t?'<div class="mm-pay-error">'+t+'</div>':''};
     const loadInfo=async()=>{
       msg('');
-      try{info=await api('/api/v1/subscriptions/renew-info/'+encodeURIComponent(consumer().id));monthly=Number(info.monthly_amount||0);el.querySelector('#mm-full').textContent=money(monthly);el.querySelector('#mm-half').textContent=money(monthly/2)}catch(e){msg(e.message)}
+      try{const d=await api('/api/v1/subscriptions/renew-info/'+encodeURIComponent(consumer().id));monthly=Number(d.monthly_amount||0);el.querySelector('#mm-full').textContent=money(monthly);el.querySelector('#mm-half').textContent=money(monthly/2)}catch(e){msg(e.message)}
     };
-    const setPeriod=p=>{period=p;el.querySelectorAll('.mm-pay-period').forEach(b=>b.classList.toggle('selected',b.dataset.period===p));if(el.querySelector('#mm-qr'))generateQR()};
-    el.querySelectorAll('.mm-pay-period').forEach(b=>b.onclick=()=>setPeriod(b.dataset.period));
+    el.querySelectorAll('.mm-pay-period').forEach(b=>b.onclick=()=>{period=b.dataset.period;el.querySelectorAll('.mm-pay-period').forEach(x=>x.classList.toggle('selected',x===b))});
     el.querySelector('#mm-consumer').onchange=loadInfo;
-    el.querySelector('#mm-month').onchange=()=>{if(el.querySelector('#mm-qr'))generateQR()};
     async function generateQR(){
-      msg('');const amount=period==='half'?monthly/2:monthly;if(!amount){msg('Monthly amount is not configured for this consumer.');return}
+      msg('');
+      const amount=period==='half'?monthly/2:monthly;
+      if(!amount){msg('Monthly amount is not configured for this consumer.');return}
+      const b=el.querySelector('#mm-generate');b.disabled=true;b.textContent='Generating…';
       try{
-        const d=await api('/api/v1/payments/upi-qr',{method:'POST',body:JSON.stringify({consumer_id:consumer().id,month:el.querySelector('#mm-month').value,period,amount})});
-        el.querySelector('#mm-qr-area').innerHTML=`<div class="mm-pay-qr"><img id="mm-qr" src="data:image/png;base64,${d.image_base64}" alt="Payment QR"><b>${money(amount)} · ${monthLabel(el.querySelector('#mm-month').value)}</b><small>Pay to ${d.upi_id}</small><small>After payment, enter the UTR below to confirm and renew.</small><div style="width:100%;margin-top:12px"><input id="mm-utr" placeholder="UPI UTR / transaction ID"></div><button type="button" class="mm-pay-primary" id="mm-confirm" style="margin-top:10px;width:100%">Confirm payment & renew</button></div>`;
-        el.querySelector('#mm-confirm').onclick=confirmPayment;
-      }catch(e){msg(e.message)}
+        const d=await api('/api/v1/payments/qr',{method:'POST',body:JSON.stringify({consumer_id:consumer().id,month:el.querySelector('#mm-month').value,period,amount})});
+        el.querySelector('#mm-qr-area').innerHTML=\`<div class="mm-pay-qr">
+          <img id="mm-qr" src="\${d.image_url}" alt="Secure payment QR">
+          <b>\${money(amount)} · \${monthLabel(el.querySelector('#mm-month').value)}</b>
+          <small>Scan this QR to pay securely</small>
+          <small style="color:#b7ff62">Waiting for payment confirmation…</small>
+        </div>\`;
+        b.textContent='QR generated';
+        pollStatus(d.intent_id);
+      }catch(e){msg(e.message);b.disabled=false;b.textContent='Generate secure QR'}
     }
-    async function confirmPayment(){
-      const ref=(el.querySelector('#mm-utr')?.value||'').trim();if(!ref){msg('Enter the UTR / transaction ID after verifying the payment.');return}
-      const b=el.querySelector('#mm-confirm');b.disabled=true;b.textContent='Renewing…';msg('');
+    let pollTimer;
+    async function pollStatus(intentId){
+      clearTimeout(pollTimer);
       try{
-        await api('/api/v1/subscriptions/renew',{method:'POST',body:JSON.stringify({consumer_id:consumer().id,period,month:el.querySelector('#mm-month').value,method:'upi',reference:ref})});
-        el.querySelector('#mm-pay-message').innerHTML='<div class="mm-pay-success">Payment recorded and subscription renewed successfully.</div>';
-        setTimeout(()=>window.location.reload(),700);
-      }catch(e){msg(e.message);b.disabled=false;b.textContent='Confirm payment & renew'}
+        const d=await api('/api/v1/payments/qr/'+encodeURIComponent(intentId)+'/status');
+        if(d.status==='paid'){
+          el.querySelector('#mm-qr-area').innerHTML='<div class="mm-pay-qr"><div style="font-size:44px">✓</div><b style="color:#b7ff62">Payment received & subscription renewed</b><small>MessMate verified the payment automatically.</small></div>';
+          setTimeout(()=>window.location.reload(),1200);return;
+        }
+        if(d.status==='failed'){msg('This payment request could not be completed. Generate a new QR.');return}
+      }catch(e){}
+      pollTimer=setTimeout(()=>pollStatus(intentId),2500);
     }
     el.querySelector('#mm-generate').onclick=generateQR;
-    el.querySelector('#mm-config').onclick=async()=>{
-      const current=settings.upi_id||'';const upi=prompt('Enter the mess owner UPI ID (example: owner@upi):',current);
-      if(upi===null)return;
-      try{settings=await api('/api/v1/payments/upi-settings',{method:'PUT',body:JSON.stringify({upi_id:upi.trim()})});await generateQR()}catch(e){msg(e.message)}
-    };
-    if(!settings.upi_id)msg('Set the mess owner UPI ID before generating a payment QR.');
     await loadInfo();
   }
   function showRenewal(c){
