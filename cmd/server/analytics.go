@@ -18,11 +18,8 @@ func parseMonth(value string) (time.Time, time.Time, error) {
 // A subscription becomes overdue when its coverage has ended, even if the
 // previous period was fully paid. This represents an overdue renewal.
 func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
-    // A fully paid subscription must remain Paid even after its coverage ends.
-    // Expiry alone is not a payment default; overdue means the subscription
-    // ended with an unpaid or partially unpaid amount.
-    if paid >= amount { return "paid" }
     if !endDate.IsZero() && endDate.Before(asOf) { return "overdue" }
+    if paid >= amount { return "paid" }
     if paid > 0 { return "partial" }
     return "pending"
 }
@@ -122,7 +119,7 @@ func (a *App) consumerProfile(w http.ResponseWriter,r *http.Request){
 
     expected:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};present:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};days:=[]map[string]any{}
     for d:=monthStart;d.Before(monthStart.AddDate(0,1,0));d=d.AddDate(0,0,1){day:=map[string]any{"date":d.Format("2006-01-02"),"breakfast":false,"lunch":false,"dinner":false};for _,s:=range subscriptions{if d.Before(s.Start)||d.After(s.End){continue};for _,m:=range []string{"breakfast","lunch","dinner"}{if plan=="all"||containsMeal(plan,m){expected[m]++;if attendance[m][d.Format("2006-01-02")]{day[m]=true}}}};for _,m:=range []string{"breakfast","lunch","dinner"}{if day[m].(bool){present[m]++}};days=append(days,day)}
-    type paymentHistory struct{ID uuid.UUID;Amount float64;Method,Reference string;PaidAt time.Time;SubStart,SubEnd time.Time}
+    type paymentHistory struct{ID uuid.UUID `json:"id"`;Amount float64 `json:"amount"`;Method string `json:"method"`;Reference string `json:"reference"`;PaidAt time.Time `json:"paid_at"`;SubStart time.Time `json:"subscription_start,omitempty"`;SubEnd time.Time `json:"subscription_end,omitempty"`}
     pr,err:=a.db.Query(`SELECT p.id,p.amount,COALESCE(p.method,''),COALESCE(p.reference,''),p.paid_at,s.start_date,s.end_date FROM payments p LEFT JOIN subscriptions s ON s.id=p.subscription_id WHERE p.consumer_id=$1 ORDER BY p.paid_at DESC,p.id DESC`,id)
     if err!=nil{errorJSON(w,500,"database error");return}
     defer pr.Close()
