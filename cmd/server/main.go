@@ -116,7 +116,7 @@ func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
     plan,err:=normalizeMealPlan(req.MealPlan);if err!=nil{errorJSON(w,400,err.Error());return}
     if req.ConsumerID==""{req.ConsumerID="MM-"+strings.ToUpper(randomID()[:8])}
     if req.StartDate==""{errorJSON(w,400,"start_date is required");return}
-    if req.EndDate==""{startTmp,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return};req.EndDate=startTmp.AddDate(0,1,0).AddDate(0,0,-1).Format("2006-01-02")}
+    if req.EndDate==""{startTmp,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return};req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02")}
     start,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return}
     end,err:=time.Parse("2006-01-02",req.EndDate);if err!=nil||end.Before(start){errorJSON(w,400,"invalid end_date");return}
     if req.Amount<=0{errorJSON(w,400,"amount must be greater than 0");return}
