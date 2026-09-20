@@ -122,8 +122,14 @@ func (a *App) consumerProfile(w http.ResponseWriter,r *http.Request){
 
     expected:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};present:=map[string]int{"breakfast":0,"lunch":0,"dinner":0};days:=[]map[string]any{}
     for d:=monthStart;d.Before(monthStart.AddDate(0,1,0));d=d.AddDate(0,0,1){day:=map[string]any{"date":d.Format("2006-01-02"),"breakfast":false,"lunch":false,"dinner":false};for _,s:=range subscriptions{if d.Before(s.Start)||d.After(s.End){continue};for _,m:=range []string{"breakfast","lunch","dinner"}{if plan=="all"||containsMeal(plan,m){expected[m]++;if attendance[m][d.Format("2006-01-02")]{day[m]=true}}}};for _,m:=range []string{"breakfast","lunch","dinner"}{if day[m].(bool){present[m]++}};days=append(days,day)}
+    type paymentHistory struct{ID uuid.UUID;Amount float64;Method,Reference string;PaidAt time.Time;SubStart,SubEnd time.Time}
+    pr,err:=a.db.Query(`SELECT p.id,p.amount,COALESCE(p.method,''),COALESCE(p.reference,''),p.paid_at,s.start_date,s.end_date FROM payments p LEFT JOIN subscriptions s ON s.id=p.subscription_id WHERE p.consumer_id=$1 ORDER BY p.paid_at DESC,p.id DESC`,id)
+    if err!=nil{errorJSON(w,500,"database error");return}
+    defer pr.Close()
+    payments:=[]paymentHistory{}
+    for pr.Next(){var p paymentHistory;if pr.Scan(&p.ID,&p.Amount,&p.Method,&p.Reference,&p.PaidAt,&p.SubStart,&p.SubEnd)==nil{payments=append(payments,p)}}
     status:=displayedPaymentStatus(latest.Paid,latest.Amount,latest.End,time.Now())
-    writeJSON(w,200,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"meal_plan":plan,"active":active,"qr_token":qr,"subscription":map[string]any{"id":latest.ID,"start_date":formatDate(latest.Start),"end_date":formatDate(latest.End),"amount":latest.Amount,"amount_paid":latest.Paid,"due":latest.Amount-latest.Paid,"payment_status":status},"month":monthStart.Format("2006-01"),"month_label":monthStart.Format("January 2006"),"attendance":map[string]any{"present":present,"expected":expected,"days":days}})
+    writeJSON(w,200,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"meal_plan":plan,"active":active,"qr_token":qr,"subscription":map[string]any{"id":latest.ID,"start_date":formatDate(latest.Start),"end_date":formatDate(latest.End),"amount":latest.Amount,"amount_paid":latest.Paid,"due":latest.Amount-latest.Paid,"payment_status":status},"month":monthStart.Format("2006-01"),"month_label":monthStart.Format("January 2006"),"attendance":map[string]any{"present":present,"expected":expected,"days":days},"payments":payments})
 }
 
 func formatDate(t time.Time)string{if t.IsZero(){return ""};return t.Format("2006-01-02")}
