@@ -39,3 +39,11 @@ Default server: `http://localhost:8080`
 `GET /api/v1/attendance/today`
 
 WhatsApp sending is intentionally represented by a provider interface; production WhatsApp automation should use an approved WhatsApp Business/Meta integration.
+
+## Versioning
+MessMate follows Semantic Versioning (MAJOR.MINOR.PATCH):
+- PATCH (2.2.1): bug fixes, small corrections, and safe fixes that do not change the product's intended feature set.
+- MINOR (2.3.0): new backward-compatible features or meaningful feature updates.
+- MAJOR (3.0.0): major product changes, breaking changes, or a substantial new generation of the app.
+
+The current app version is **2.2.1**.
