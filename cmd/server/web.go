@@ -32,6 +32,8 @@ func registerWeb(mux *http.ServeMux) {
     mux.HandleFunc("PUT /api/v1/payments/upi-settings", updatePaymentUPISettings)
     mux.HandleFunc("POST /api/v1/payments/upi-qr", paymentUPIQR)
     mux.HandleFunc("GET /api/v1/payments/provider-status", paymentProviderStatus)
+    mux.HandleFunc("GET /api/v1/payments/razorpay-account", paymentRazorpayAccount)
+    mux.HandleFunc("PUT /api/v1/payments/razorpay-account", updateRazorpayAccount)
     mux.HandleFunc("POST /api/v1/payments/qr", createPaymentQR)
     mux.HandleFunc("GET /api/v1/payments/qr/{id}/status", paymentQRStatus)
     mux.HandleFunc("POST /api/v1/payments/webhook/razorpay", razorpayWebhook)
@@ -175,11 +177,32 @@ func paymentUPIQR(w http.ResponseWriter, r *http.Request) {
 
 
 func paymentProviderStatus(w http.ResponseWriter, r *http.Request) {
-    if _, err := renewalOwnerID(r); err != nil { errorJSON(w, http.StatusUnauthorized, err.Error()); return }
+    ownerID, err := renewalOwnerID(r); if err != nil { errorJSON(w, http.StatusUnauthorized, err.Error()); return }
     configured := getenv("RAZORPAY_KEY_ID","") != "" && getenv("RAZORPAY_KEY_SECRET","") != "" && getenv("RAZORPAY_WEBHOOK_SECRET","") != ""
-    writeJSON(w, http.StatusOK, map[string]any{"provider":"razorpay","configured":configured})
+    var accountID string
+    db, err := sql.Open("postgres", getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable"))
+    if err == nil { defer db.Close(); _ = db.QueryRow("SELECT COALESCE(razorpay_account_id,'') FROM owners WHERE id=$1", ownerID).Scan(&accountID) }
+    writeJSON(w, http.StatusOK, map[string]any{"provider":"razorpay","configured":configured,"route_enabled":accountID!="","razorpay_account_id":accountID})
 }
 
+func paymentRazorpayAccount(w http.ResponseWriter, r *http.Request) {
+    ownerID, err := renewalOwnerID(r); if err != nil { errorJSON(w, http.StatusUnauthorized, err.Error()); return }
+    db, err := sql.Open("postgres", getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")); if err != nil { errorJSON(w,500,"database connection failed"); return }; defer db.Close()
+    var accountID string
+    if err=db.QueryRow("SELECT COALESCE(razorpay_account_id,'') FROM owners WHERE id=$1",ownerID).Scan(&accountID); err!=nil { errorJSON(w,500,"could not load Razorpay account"); return }
+    writeJSON(w,200,map[string]any{"razorpay_account_id":accountID,"route_enabled":accountID!=""})
+}
+
+func updateRazorpayAccount(w http.ResponseWriter, r *http.Request) {
+    ownerID, err := renewalOwnerID(r); if err != nil { errorJSON(w,http.StatusUnauthorized,err.Error()); return }
+    var req map[string]any
+    if decode(r,&req)!=nil { errorJSON(w,400,"invalid request"); return }
+    accountID,_:=req["razorpay_account_id"].(string); accountID=strings.TrimSpace(accountID)
+    if accountID!="" && !strings.HasPrefix(accountID,"acc_") { errorJSON(w,400,"Razorpay linked account ID must start with acc_"); return }
+    db, err := sql.Open("postgres",getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")); if err!=nil { errorJSON(w,500,"database connection failed"); return }; defer db.Close()
+    if _,err=db.Exec("UPDATE owners SET razorpay_account_id=$1 WHERE id=$2",accountID,ownerID);err!=nil{errorJSON(w,500,"could not save Razorpay linked account");return}
+    writeJSON(w,200,map[string]any{"razorpay_account_id":accountID,"route_enabled":accountID!=""})
+}
 type paymentQRRequestV2 struct {
     ConsumerID string `json:"consumer_id"`
     Month string `json:"month"`
@@ -215,6 +238,9 @@ func createPaymentQR(w http.ResponseWriter, r *http.Request) {
     if overlap{errorJSON(w,409,"a subscription already exists for the selected period");return}
     intentID:=uuid.New()
     if _,err=db.Exec("INSERT INTO payment_intents(id,owner_id,consumer_id,month_label,period,amount,status) VALUES($1,$2,$3,$4,$5,$6,'pending')",intentID,ownerID,consumerID,req.Month,req.Period,req.Amount);err!=nil{errorJSON(w,500,"could not create payment request");return}
+    var razorpayAccountID string
+    if err=db.QueryRow("SELECT COALESCE(razorpay_account_id,'') FROM owners WHERE id=$1",ownerID).Scan(&razorpayAccountID);err!=nil{errorJSON(w,500,"could not load Razorpay account");return}
+    if razorpayAccountID==""{errorJSON(w,400,"Razorpay Route linked account is not configured for this mess owner");return}
     payload:=map[string]any{"type":"upi_qr","name":"MessMate - "+consumerName,"usage":"single_use","fixed_amount":true,"payment_amount":int64(req.Amount*100),"description":"MessMate "+consumerName+" "+req.Month,"close_by":time.Now().Add(2*time.Hour).Unix(),"notes":map[string]string{"messmate_intent_id":intentID.String(),"owner_id":ownerID.String(),"consumer_id":consumerID.String(),"month":req.Month,"period":req.Period}}
     raw,_:=json.Marshal(payload)
     response,err:=razorpayAPI("POST","/v1/payments/qr_codes",raw)
@@ -276,6 +302,13 @@ func fulfillPaymentIntentV2(intentID uuid.UUID,providerPayment string,providerAm
     var monthly float64;if err=tx.QueryRow("SELECT COALESCE(NULLIF(monthly_amount,0),amount) FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1",consumerID).Scan(&monthly);err!=nil{return err}
     var subID uuid.UUID;if err=tx.QueryRow("INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,monthly_amount,amount_paid,month_label,payment_status) VALUES($1,$2,$3,$4,$5,$4,$6,'paid') RETURNING id",consumerID,start,end,amount,monthly,ms.Format("January 2006")).Scan(&subID);err!=nil{return err}
     if _,err=tx.Exec("INSERT INTO payments(consumer_id,subscription_id,amount,method,reference) VALUES($1,$2,$3,'razorpay',$4)",consumerID,subID,amount,providerPayment);err!=nil{return err}
+    var ownerID uuid.UUID; var razorpayAccountID string
+    if err=tx.QueryRow("SELECT owner_id FROM payment_intents WHERE id=$1",intentID).Scan(&ownerID);err!=nil{return err}
+    if err=tx.QueryRow("SELECT COALESCE(razorpay_account_id,'') FROM owners WHERE id=$1",ownerID).Scan(&razorpayAccountID);err!=nil{return err}
+    if razorpayAccountID==""{return errors.New("Razorpay Route linked account is not configured")}
+    transferPayload:=map[string]any{"transfers":[]any{map[string]any{"account":razorpayAccountID,"amount":providerAmount,"currency":"INR","notes":map[string]string{"messmate_intent_id":intentID.String(),"consumer_id":consumerID.String()},"linked_account_notes":[]string{"messmate_intent_id","consumer_id"},"on_hold":false}}}
+    transferRaw,_:=json.Marshal(transferPayload)
+    if _,err=razorpayAPI("POST","/v1/payments/"+providerPayment+"/transfers",transferRaw);err!=nil{return err}
     if _,err=tx.Exec("UPDATE payment_intents SET status='paid',provider_payment_id=$2,provider_qr_id=COALESCE(provider_qr_id,$3),paid_at=NOW() WHERE id=$1",intentID,providerPayment,qrID);err!=nil{return err}
     return tx.Commit()
 }
