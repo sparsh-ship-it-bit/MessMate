@@ -65,7 +65,8 @@ func renewalInfo(w http.ResponseWriter, r *http.Request) {
     var monthly float64
     err = db.QueryRow(`SELECT s.end_date, COALESCE(NULLIF(s.monthly_amount,0),s.amount) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE s.consumer_id=$1 AND c.owner_id=$2 ORDER BY s.end_date DESC LIMIT 1`, consumerID, ownerID).Scan(&end, &monthly)
     if err != nil { errorJSON(w, 404, "consumer subscription not found"); return }
-    writeJSON(w, 200, map[string]any{"monthly_amount":monthly,"end_date":end.Format("2006-01-02")})
+    nextStart := end.AddDate(0, 0, 1)
+    writeJSON(w, 200, map[string]any{"monthly_amount":monthly,"end_date":end.Format("2006-01-02"),"next_start_date":nextStart.Format("2006-01-02")})
 }
 
 func renewalOwnerID(r *http.Request) (uuid.UUID, error) {
