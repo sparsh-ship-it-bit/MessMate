@@ -34,6 +34,12 @@
     let provider;
     try{provider=await api('/api/v1/payments/provider-status')}catch(e){alert(e.message);return}
     if(!provider.configured){alert('Online payments are not configured yet. Add Razorpay server credentials and webhook secret in Render.');return}
+    if(!provider.route_enabled){
+      const accountId=window.prompt('MessMate needs this owner\'s Razorpay Route Linked Account ID (starts with acc_). Create/onboard the linked account in Razorpay Route first, then paste the account ID here:','');
+      if(!accountId||!accountId.trim()){alert('Razorpay Route linked account is required for automatic settlement to this mess owner.');return}
+      try{await api('/api/v1/payments/razorpay-account',{method:'PUT',body:JSON.stringify({razorpay_account_id:accountId.trim()})})}
+      catch(e){alert(e.message);return}
+    }
     const el=document.createElement('div');el.id='mm-pay-backdrop';el.className='mm-pay-backdrop';
     const firstMonth=months()[0].v;
     el.innerHTML=\`<div class="mm-pay-modal">
