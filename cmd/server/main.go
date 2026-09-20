@@ -115,10 +115,12 @@ func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
     if decode(r,&req)!=nil||req.Name==""||req.Phone==""{errorJSON(w,400,"name and phone are required");return}
     plan,err:=normalizeMealPlan(req.MealPlan);if err!=nil{errorJSON(w,400,err.Error());return}
     if req.ConsumerID==""{req.ConsumerID="MM-"+strings.ToUpper(randomID()[:8])}
-    if req.StartDate==""||req.EndDate==""{errorJSON(w,400,"start_date and end_date are required");return}
+    if req.StartDate==""{errorJSON(w,400,"start_date is required");return}
+    if req.EndDate==""{startTmp,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return};req.EndDate=startTmp.AddDate(0,1,0).AddDate(0,0,-1).Format("2006-01-02")}
     start,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return}
     end,err:=time.Parse("2006-01-02",req.EndDate);if err!=nil||end.Before(start){errorJSON(w,400,"invalid end_date");return}
-    if req.Amount<0||req.AmountPaid<0||req.AmountPaid>req.Amount{errorJSON(w,400,"amount paid must be between 0 and total amount");return}
+    if req.Amount<=0{errorJSON(w,400,"amount must be greater than 0");return}
+    if req.AmountPaid<0||req.AmountPaid>req.Amount{errorJSON(w,400,"amount paid must be between 0 and total amount");return}
     tx,err:=a.db.Begin();if err!=nil{errorJSON(w,500,"could not start transaction");return};defer tx.Rollback()
     var id,qr,sid uuid.UUID
     err=tx.QueryRow(`INSERT INTO consumers(owner_id,consumer_id,name,phone,meal_plan) VALUES($1,$2,$3,$4,$5) RETURNING id,qr_token`,oid,req.ConsumerID,req.Name,req.Phone,plan).Scan(&id,&qr)
