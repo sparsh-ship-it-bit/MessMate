@@ -18,8 +18,11 @@ func parseMonth(value string) (time.Time, time.Time, error) {
 // A subscription becomes overdue when its coverage has ended, even if the
 // previous period was fully paid. This represents an overdue renewal.
 func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
-    if !endDate.IsZero() && endDate.Before(asOf) { return "overdue" }
+    // A fully paid subscription must remain Paid even after its coverage ends.
+    // Expiry alone is not a payment default; overdue means the subscription
+    // ended with an unpaid or partially unpaid amount.
     if paid >= amount { return "paid" }
+    if !endDate.IsZero() && endDate.Before(asOf) { return "overdue" }
     if paid > 0 { return "partial" }
     return "pending"
 }
