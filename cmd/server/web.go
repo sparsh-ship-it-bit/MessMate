@@ -1,9 +1,15 @@
 package main
 
 import (
+    "bytes"
+    "crypto/hmac"
+    "crypto/sha256"
     "database/sql"
     "encoding/base64"
+    "encoding/hex"
+    "encoding/json"
     "fmt"
+    "io"
     "net/url"
     "errors"
     "net/http"
@@ -25,6 +31,10 @@ func registerWeb(mux *http.ServeMux) {
     mux.HandleFunc("GET /api/v1/payments/upi-settings", paymentUPISettings)
     mux.HandleFunc("PUT /api/v1/payments/upi-settings", updatePaymentUPISettings)
     mux.HandleFunc("POST /api/v1/payments/upi-qr", paymentUPIQR)
+    mux.HandleFunc("GET /api/v1/payments/provider-status", paymentProviderStatus)
+    mux.HandleFunc("POST /api/v1/payments/qr", createPaymentQR)
+    mux.HandleFunc("GET /api/v1/payments/qr/{id}/status", paymentQRStatus)
+    mux.HandleFunc("POST /api/v1/payments/webhook/razorpay", razorpayWebhook)
     dir := os.Getenv("WEB_DIR")
     if dir == "" {
         dir = "web/dist"
@@ -162,3 +172,112 @@ func paymentUPIQR(w http.ResponseWriter, r *http.Request) {
     png,err:=qrcode.Encode(uri,qrcode.Medium,320); if err!=nil { errorJSON(w,500,"could not generate payment QR"); return }
     writeJSON(w,200,map[string]any{"image_base64":base64.StdEncoding.EncodeToString(png),"upi_uri":uri,"upi_id":upi,"amount":req.Amount,"consumer":consumerName,"month":req.Month,"period":req.Period})
 }
+
+
+func paymentProviderStatus(w http.ResponseWriter, r *http.Request) {
+    if _, err := renewalOwnerID(r); err != nil { errorJSON(w, http.StatusUnauthorized, err.Error()); return }
+    configured := getenv("RAZORPAY_KEY_ID","") != "" && getenv("RAZORPAY_KEY_SECRET","") != "" && getenv("RAZORPAY_WEBHOOK_SECRET","") != ""
+    writeJSON(w, http.StatusOK, map[string]any{"provider":"razorpay","configured":configured})
+}
+
+type paymentQRRequestV2 struct {
+    ConsumerID string `json:"consumer_id"`
+    Month string `json:"month"`
+    Period string `json:"period"`
+    Amount float64 `json:"amount"`
+}
+type razorQRResponseV2 struct {
+    ID string `json:"id"`
+    ImageURL string `json:"image_url"`
+    ShortURL string `json:"short_url"`
+    Status string `json:"status"`
+}
+
+func createPaymentQR(w http.ResponseWriter, r *http.Request) {
+    ownerID, err := renewalOwnerID(r); if err != nil { errorJSON(w,401,err.Error()); return }
+    if getenv("RAZORPAY_KEY_ID","")=="" || getenv("RAZORPAY_KEY_SECRET","")=="" { errorJSON(w,503,"online payments are not configured yet"); return }
+    var req paymentQRRequestV2
+    if decode(r,&req)!=nil || req.ConsumerID=="" || req.Month=="" || req.Amount<=0 { errorJSON(w,400,"consumer_id, month and positive amount are required"); return }
+    if req.Period!="half" && req.Period!="full" { errorJSON(w,400,"period must be half or full"); return }
+    monthStart,err:=time.Parse("2006-01",req.Month); if err!=nil { errorJSON(w,400,"month must use YYYY-MM format"); return }
+    consumerID,err:=uuid.Parse(req.ConsumerID); if err!=nil { errorJSON(w,400,"invalid consumer_id"); return }
+    db,err:=sql.Open("postgres",getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")); if err!=nil {errorJSON(w,500,"database connection failed");return}; defer db.Close()
+    if err=db.Ping();err!=nil{errorJSON(w,500,"database connection failed");return}
+    var consumerName string
+    if err=db.QueryRow("SELECT name FROM consumers WHERE id=$1 AND owner_id=$2",consumerID,ownerID).Scan(&consumerName);err!=nil{errorJSON(w,404,"consumer not found");return}
+    var monthly float64
+    if err=db.QueryRow("SELECT COALESCE(NULLIF(s.monthly_amount,0),s.amount) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE s.consumer_id=$1 AND c.owner_id=$2 ORDER BY s.end_date DESC LIMIT 1",consumerID,ownerID).Scan(&monthly);err!=nil{errorJSON(w,404,"consumer subscription not found");return}
+    expected:=monthly; if req.Period=="half"{expected=monthly/2}
+    if expected<=0 || absFloat(expected-req.Amount)>0.01 {errorJSON(w,400,"payment amount does not match the consumer plan");return}
+    start:=monthStart; end:=monthStart.AddDate(0,1,-1); if req.Period=="half"{end=monthStart.AddDate(0,0,14)}
+    var overlap bool
+    if err=db.QueryRow("SELECT EXISTS(SELECT 1 FROM subscriptions WHERE consumer_id=$1 AND start_date <= $3 AND end_date >= $2)",consumerID,start,end).Scan(&overlap);err!=nil{errorJSON(w,500,"could not check subscription period");return}
+    if overlap{errorJSON(w,409,"a subscription already exists for the selected period");return}
+    intentID:=uuid.New()
+    if _,err=db.Exec("INSERT INTO payment_intents(id,owner_id,consumer_id,month_label,period,amount,status) VALUES($1,$2,$3,$4,$5,$6,'pending')",intentID,ownerID,consumerID,req.Month,req.Period,req.Amount);err!=nil{errorJSON(w,500,"could not create payment request");return}
+    payload:=map[string]any{"type":"upi_qr","name":"MessMate - "+consumerName,"usage":"single_use","fixed_amount":true,"payment_amount":int64(req.Amount*100),"description":"MessMate "+consumerName+" "+req.Month,"close_by":time.Now().Add(2*time.Hour).Unix(),"notes":map[string]string{"messmate_intent_id":intentID.String(),"owner_id":ownerID.String(),"consumer_id":consumerID.String(),"month":req.Month,"period":req.Period}}
+    raw,_:=json.Marshal(payload)
+    response,err:=razorpayAPI("POST","/v1/payments/qr_codes",raw)
+    if err!=nil{_,_=db.Exec("UPDATE payment_intents SET status='failed' WHERE id=$1",intentID);errorJSON(w,502,err.Error());return}
+    var qr razorQRResponseV2
+    if err=json.Unmarshal(response,&qr);err!=nil{errorJSON(w,502,"invalid payment provider response");return}
+    if _,err=db.Exec("UPDATE payment_intents SET provider_qr_id=$2 WHERE id=$1",intentID,qr.ID);err!=nil{errorJSON(w,500,"could not save payment request");return}
+    writeJSON(w,200,map[string]any{"intent_id":intentID,"qr_id":qr.ID,"image_url":qr.ImageURL,"short_url":qr.ShortURL,"status":"pending","consumer":consumerName,"amount":req.Amount,"month":req.Month,"period":req.Period})
+}
+
+func paymentQRStatus(w http.ResponseWriter,r *http.Request){
+    ownerID,err:=renewalOwnerID(r);if err!=nil{errorJSON(w,401,err.Error());return}
+    intentID,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid payment request");return}
+    db,err:=sql.Open("postgres",getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable"));if err!=nil{errorJSON(w,500,"database connection failed");return};defer db.Close()
+    var status string;var paidAt sql.NullTime
+    if err=db.QueryRow("SELECT status,paid_at FROM payment_intents WHERE id=$1 AND owner_id=$2",intentID,ownerID).Scan(&status,&paidAt);err!=nil{errorJSON(w,404,"payment request not found");return}
+    writeJSON(w,200,map[string]any{"status":status,"paid_at":paidAt.Time})
+}
+
+func razorpayAPI(method,path string,body []byte)([]byte,error){
+    req,err:=http.NewRequest(method,"https://api.razorpay.com"+path,bytes.NewReader(body));if err!=nil{return nil,err}
+    req.Header.Set("Content-Type","application/json");req.SetBasicAuth(getenv("RAZORPAY_KEY_ID",""),getenv("RAZORPAY_KEY_SECRET",""))
+    resp,err:=http.DefaultClient.Do(req);if err!=nil{return nil,err};defer resp.Body.Close()
+    data,_:=io.ReadAll(resp.Body);if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("payment provider returned HTTP %d",resp.StatusCode)};return data,nil
+}
+
+func razorpayWebhook(w http.ResponseWriter,r *http.Request){
+    secret:=getenv("RAZORPAY_WEBHOOK_SECRET","");if secret==""{http.Error(w,"webhook not configured",503);return}
+    body,err:=io.ReadAll(r.Body);if err!=nil{http.Error(w,"bad request",400);return}
+    signature:=r.Header.Get("X-Razorpay-Signature");mac:=hmac.New(sha256.New,[]byte(secret));_,_=mac.Write(body)
+    expected:=hex.EncodeToString(mac.Sum(nil));if !hmac.Equal([]byte(expected),[]byte(signature)){http.Error(w,"invalid signature",401);return}
+    var event struct{
+        Event string `json:"event"`
+        Payload struct{
+            Payment struct{Entity struct{ID string `json:"id"`;Amount int64 `json:"amount"`;Status string `json:"status"`} `json:"entity"`} `json:"payment"`
+            QR struct{Entity struct{ID string `json:"id"`;Notes map[string]any `json:"notes"`} `json:"entity"`} `json:"qr_code"`
+        } `json:"payload"`
+    }
+    if json.Unmarshal(body,&event)!=nil{http.Error(w,"invalid payload",400);return}
+    if event.Event!="qr_code.credited"{writeJSON(w,200,map[string]any{"received":true});return}
+    rawIntent,_:=event.Payload.QR.Entity.Notes["messmate_intent_id"].(string);intentID,err:=uuid.Parse(rawIntent);if err!=nil{http.Error(w,"missing payment intent",400);return}
+    if err=fulfillPaymentIntentV2(intentID,event.Payload.Payment.Entity.ID,event.Payload.Payment.Entity.Amount,event.Payload.Payment.Entity.Status,event.Payload.QR.Entity.ID);err!=nil{http.Error(w,err.Error(),500);return}
+    writeJSON(w,200,map[string]any{"received":true})
+}
+
+func fulfillPaymentIntentV2(intentID uuid.UUID,providerPayment string,providerAmount int64,providerStatus,qrID string)error{
+    if providerStatus!=""&&providerStatus!="captured"{return nil}
+    db,err:=sql.Open("postgres",getenv("DATABASE_URL","postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable"));if err!=nil{return err};defer db.Close()
+    if err=db.Ping();err!=nil{return err}
+    tx,err:=db.Begin();if err!=nil{return err};defer tx.Rollback()
+    var consumerID uuid.UUID;var month,period,status string;var amount float64
+    if err=tx.QueryRow("SELECT consumer_id,month_label,period,amount,status FROM payment_intents WHERE id=$1 FOR UPDATE",intentID).Scan(&consumerID,&month,&period,&amount,&status);err!=nil{return err}
+    if status!="pending"{return nil}
+    if absFloat(amount-float64(providerAmount)/100)>0.01{return errors.New("payment amount mismatch")}
+    var duplicate bool;if err=tx.QueryRow("SELECT EXISTS(SELECT 1 FROM payments WHERE method='razorpay' AND reference=$1)",providerPayment).Scan(&duplicate);err!=nil{return err};if duplicate{return nil}
+    ms,err:=time.Parse("2006-01",month);if err!=nil{return err};start:=ms;end:=ms.AddDate(0,1,-1);if period=="half"{end=ms.AddDate(0,0,14)}
+    var overlap bool;if err=tx.QueryRow("SELECT EXISTS(SELECT 1 FROM subscriptions WHERE consumer_id=$1 AND start_date <= $3 AND end_date >= $2)",consumerID,start,end).Scan(&overlap);err!=nil{return err}
+    if overlap{_,err=tx.Exec("UPDATE payment_intents SET status='failed' WHERE id=$1",intentID);return err}
+    var monthly float64;if err=tx.QueryRow("SELECT COALESCE(NULLIF(monthly_amount,0),amount) FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1",consumerID).Scan(&monthly);err!=nil{return err}
+    var subID uuid.UUID;if err=tx.QueryRow("INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,monthly_amount,amount_paid,month_label,payment_status) VALUES($1,$2,$3,$4,$5,$4,$6,'paid') RETURNING id",consumerID,start,end,amount,monthly,ms.Format("January 2006")).Scan(&subID);err!=nil{return err}
+    if _,err=tx.Exec("INSERT INTO payments(consumer_id,subscription_id,amount,method,reference) VALUES($1,$2,$3,'razorpay',$4)",consumerID,subID,amount,providerPayment);err!=nil{return err}
+    if _,err=tx.Exec("UPDATE payment_intents SET status='paid',provider_payment_id=$2,provider_qr_id=COALESCE(provider_qr_id,$3),paid_at=NOW() WHERE id=$1",intentID,providerPayment,qrID);err!=nil{return err}
+    return tx.Commit()
+}
+
+func absFloat(v float64)float64{if v<0{return -v};return v}
