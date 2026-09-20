@@ -106,10 +106,30 @@
     const el=document.createElement('div');el.id='mm-pay-backdrop';el.className='mm-pay-backdrop';
     el.innerHTML=`<div class="mm-pay-modal"><div class="mm-pay-head"><div><h3>Renew ${c.name||'Consumer'}</h3><div style="color:#7f8b81;font-size:12px">Choose duration and historical month.</div></div><button class="mm-pay-close">×</button></div><div class="mm-pay-periods"><button class="mm-pay-period selected" data-period="full"><b>Full Month</b><small>1st to last day</small><div class="mm-pay-amount">—</div></button><button class="mm-pay-period" data-period="half"><b>Half Month</b><small>1st to 15th</small><div class="mm-pay-amount">—</div></button></div><label>Month<select id="mm-month">${months().map(m=>`<option value="${m.v}">${m.l}</option>`).join('')}</select></label><div id="mm-renew-message"></div><button class="mm-pay-primary" id="mm-renew-save" style="width:100%;margin-top:8px">Renew selected month</button></div>`;
     document.body.appendChild(el);el.querySelector('.mm-pay-close').onclick=closeModal;el.onclick=e=>{if(e.target===el)closeModal()};
+    const monthLabelWrap=el.querySelector('#mm-month').closest('label');
+    const periodWrap=el.querySelector('.mm-pay-periods');
+    const saveBtn=el.querySelector('#mm-renew-save');
+    const continueBtn=document.createElement('button');
+    continueBtn.className='mm-pay-primary';continueBtn.textContent='Continue';continueBtn.style.cssText='width:100%;margin-top:8px';
+    periodWrap.parentElement.insertBefore(continueBtn,monthLabelWrap);
+    monthLabelWrap.style.display='none';saveBtn.style.display='none';
     let period='full',monthly=0;
     const msg=t=>el.querySelector('#mm-renew-message').innerHTML=t?'<div class="mm-pay-error">'+t+'</div>':'';
     const infoLoad=async()=>{try{const d=await api('/api/v1/subscriptions/renew-info/'+encodeURIComponent(c.id));monthly=Number(d.monthly_amount||0);el.querySelectorAll('.mm-pay-period .mm-pay-amount')[0].textContent=money(monthly);el.querySelectorAll('.mm-pay-period .mm-pay-amount')[1].textContent=money(monthly/2);if(d.end_date){const end=new Date(d.end_date+'T00:00:00');const next=new Date(end.getFullYear(),end.getMonth()+1,1);const nextMonth=next.toISOString().slice(0,7);const select=el.querySelector('#mm-month');if([...select.options].some(o=>o.value===nextMonth))select.value=nextMonth}}catch(e){msg(e.message)}};
     el.querySelectorAll('.mm-pay-period').forEach(b=>b.onclick=()=>{period=b.dataset.period;el.querySelectorAll('.mm-pay-period').forEach(x=>x.classList.toggle('selected',x===b))});
+    continueBtn.onclick=()=>{
+      if(!monthly){msg('Monthly amount is not configured for this consumer.');return}
+      periodWrap.style.display='none';continueBtn.style.display='none';monthLabelWrap.style.display='block';saveBtn.style.display='block';
+      updateRenewalSummary();
+    };
+    const updateRenewalSummary=()=>{
+      const v=monthSelect().value,[y,m]=v.split('-').map(Number),last=new Date(y,m,0).getDate();
+      const amount=period==='half'?monthly/2:monthly;
+      const existing=el.querySelector('#mm-renew-summary');
+      if(existing)existing.innerHTML=`<div class="mm-pay-note"><b>${period==='half'?'Half Month':'Full Month'}</b> · ${money(amount)}<br>${period==='half'?'1st to 15th (15 days)':'1st to '+last+'th (full month)'}</div>`;
+      else monthLabelWrap.insertAdjacentHTML('afterend',`<div id="mm-renew-summary" class="mm-pay-note"><b>${period==='half'?'Half Month':'Full Month'}</b> · ${money(amount)}<br>${period==='half'?'1st to 15th (15 days)':'1st to '+last+'th (full month)'}</div>`);
+    };
+    el.querySelector('#mm-month').onchange=updateRenewalSummary;
     el.querySelector('#mm-renew-save').onclick=async()=>{const b=el.querySelector('#mm-renew-save');b.disabled=true;b.textContent='Saving…';try{await api('/api/v1/subscriptions/renew',{method:'POST',body:JSON.stringify({consumer_id:c.id,period,month:el.querySelector('#mm-month').value,method:'cash'})});closeModal();window.location.reload()}catch(e){msg(e.message);b.disabled=false;b.textContent='Renew selected month'}};
     infoLoad();
   }
