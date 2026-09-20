@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     CHECK(amount_paid <= amount)
 );
 
+ALTER TABLE owners ADD COLUMN IF NOT EXISTS upi_id VARCHAR(120);
 ALTER TABLE consumers ALTER COLUMN meal_plan TYPE VARCHAR(100);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_amount NUMERIC(12,2);
