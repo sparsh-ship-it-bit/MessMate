@@ -48,6 +48,7 @@ type renewalRequest struct {
     ConsumerID string `json:"consumer_id"`
     Period     string `json:"period"`
     Month      string `json:"month"`
+    StartDate  string `json:"start_date"`
     Method     string
     Reference  string
 }
@@ -87,11 +88,16 @@ func renewSubscription(w http.ResponseWriter, r *http.Request) {
     var req renewalRequest
     if decode(r, &req) != nil || req.ConsumerID == "" { errorJSON(w, http.StatusBadRequest, "consumer_id is required"); return }
     if req.Period != "half" && req.Period != "full" { errorJSON(w, http.StatusBadRequest, "period must be half or full"); return }
-    if req.Month == "" { errorJSON(w, http.StatusBadRequest, "month is required"); return }
+    if req.StartDate == "" && req.Month == "" { errorJSON(w, http.StatusBadRequest, "start_date is required"); return }
     if req.Method == "" { req.Method = "upi" }
     if req.Method != "upi" && req.Method != "cash" && req.Method != "bank" && req.Method != "card" { errorJSON(w, http.StatusBadRequest, "invalid payment method"); return }
-    monthStart, err := time.Parse("2006-01", req.Month)
-    if err != nil { errorJSON(w, http.StatusBadRequest, "month must use YYYY-MM format"); return }
+    var start time.Time
+    if req.StartDate != "" {
+        start, err = time.Parse("2006-01-02", req.StartDate)
+    } else {
+        start, err = time.Parse("2006-01", req.Month)
+    }
+    if err != nil { errorJSON(w, http.StatusBadRequest, "start_date must use YYYY-MM-DD format"); return }
     consumerID, err := uuid.Parse(req.ConsumerID)
     if err != nil { errorJSON(w, http.StatusBadRequest, "invalid consumer_id"); return }
 
@@ -105,12 +111,11 @@ func renewSubscription(w http.ResponseWriter, r *http.Request) {
     if err != nil { errorJSON(w, 404, "consumer subscription not found"); return }
     if monthlyAmount <= 0 { errorJSON(w, 400, "consumer monthly amount is not configured"); return }
 
-    start := monthStart
-    end := monthStart.AddDate(0, 1, -1)
     amount := monthlyAmount
+    end := start.AddDate(0, 0, 29)
     if req.Period == "half" {
         amount = monthlyAmount / 2
-        end = monthStart.AddDate(0, 0, 14)
+        end = start.AddDate(0, 0, 14)
     }
 
     // Historical backfilling is allowed, but overlapping coverage is rejected so the
@@ -135,7 +140,7 @@ func renewSubscription(w http.ResponseWriter, r *http.Request) {
         "subscription_id": newID,
         "consumer_id": consumerID,
         "period": req.Period,
-        "month": req.Month,
+        "month": start.Format("2006-01"),
         "start_date": start.Format("2006-01-02"),
         "end_date": end.Format("2006-01-02"),
         "monthly_amount": monthlyAmount,
