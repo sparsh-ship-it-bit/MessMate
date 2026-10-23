@@ -34,12 +34,18 @@ type paymentRequest struct { ConsumerID string `json:"consumer_id"`; Subscriptio
 type attendanceRequest struct { QRToken string `json:"qr_token"`; Meal string `json:"meal"` }
 
 func main() {
+    loadDotEnv()
+    jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+    if len(jwtSecret) < 32 || jwtSecret == "dev-secret-change-me" || jwtSecret == "change-this-in-production" || strings.Contains(jwtSecret, "replace-with-a-strong-random-secret") {
+        log.Fatal("JWT_SECRET must be set to a unique secret of at least 32 characters")
+    }
+
     dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")
     db, err := sql.Open("postgres", dsn); if err != nil { log.Fatal(err) }
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
     if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
-    app := &App{db: db, jwtSecret: []byte(getenv("JWT_SECRET", "dev-secret-change-me")), ttl: time.Duration(ttlHours)*time.Hour}
+    app := &App{db: db, jwtSecret: []byte(jwtSecret), ttl: time.Duration(ttlHours)*time.Hour}
     mux := http.NewServeMux()
     mux.HandleFunc("GET /health", app.health)
     mux.HandleFunc("POST /api/v1/auth/register", app.register)
@@ -65,6 +71,31 @@ func main() {
     port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
     log.Fatal(http.ListenAndServe(":"+port, handler))
+}
+
+func loadDotEnv() {
+    data, err := os.ReadFile(".env")
+    if err != nil {
+        return // Production deployments provide environment variables directly.
+    }
+    for _, line := range strings.Split(string(data), "\n") {
+        line = strings.TrimSpace(line)
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+        key, value, ok := strings.Cut(line, "=")
+        if !ok {
+            continue
+        }
+        key = strings.TrimSpace(key)
+        value = strings.Trim(strings.TrimSpace(value), "\"'")
+        if key == "" {
+            continue
+        }
+        if _, exists := os.LookupEnv(key); !exists {
+            _ = os.Setenv(key, value)
+        }
+    }
 }
 
 func getenv(k, fallback string) string { if v:=os.Getenv(k); v!="" { return v }; return fallback }
@@ -347,5 +378,5 @@ func (a *App) scanAttendance(w http.ResponseWriter,r *http.Request){
 func containsMeal(plan,meal string) bool { for _,m:=range strings.Split(plan,","){if m==meal{return true}};return false }
 func (a *App) todayAttendance(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.consumer_id,c.name,at.meal,at.scanned_at FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id='%s'::uuid AND at.attendance_date=CURRENT_DATE ORDER BY at.scanned_at DESC`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var cid,name,meal string;var scanned time.Time;if rows.Scan(&cid,&name,&meal,&scanned)==nil{out=append(out,map[string]any{"consumer_id":cid,"name":name,"meal":meal,"scanned_at":scanned})}};writeJSON(w,200,out)}
 func logging(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){start:=time.Now();next.ServeHTTP(w,r);log.Printf("%s %s %s",r.Method,r.URL.Path,time.Since(start))})}
-func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
+func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PUT, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
 var _ = fmt.Sprintf
