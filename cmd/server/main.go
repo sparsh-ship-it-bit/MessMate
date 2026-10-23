@@ -125,10 +125,10 @@ func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
     tx,err:=a.db.Begin();if err!=nil{errorJSON(w,500,"could not start transaction");return};defer tx.Rollback()
     var id,qr,sid uuid.UUID
     err=tx.QueryRow(`INSERT INTO consumers(owner_id,consumer_id,name,phone,meal_plan) VALUES($1,$2,$3,$4,$5) RETURNING id,qr_token`,oid,req.ConsumerID,req.Name,req.Phone,plan).Scan(&id,&qr)
-    if err!=nil{errorJSON(w,409,"consumer ID already exists for this owner");return}
+    if err!=nil{log.Printf("createConsumer consumer insert failed: %v",err);if strings.Contains(strings.ToLower(err.Error()),"duplicate key"){errorJSON(w,409,"consumer ID already exists for this owner")}else{errorJSON(w,500,"database error while creating consumer")};return}
     status:=paymentStatus(req.Amount,req.AmountPaid); month:=start.Format("January 2006")
     err=tx.QueryRow(`INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,amount_paid,month_label,payment_status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,id,start,end,req.Amount,req.AmountPaid,month,status).Scan(&sid)
-    if err!=nil{errorJSON(w,500,"could not create subscription");return}
+    if err!=nil{log.Printf("createConsumer subscription insert failed: %v",err);errorJSON(w,500,"database error while creating subscription");return}
     if req.AmountPaid>0 { if _,err=tx.Exec(`INSERT INTO payments(consumer_id,subscription_id,amount,method) VALUES($1,$2,$3,'cash')`,id,sid,req.AmountPaid);err!=nil{errorJSON(w,500,"could not record initial payment");return} }
     if err=tx.Commit();err!=nil{errorJSON(w,500,"could not save consumer");return}
     writeJSON(w,201,map[string]any{"id":id,"consumer_id":req.ConsumerID,"qr_token":qr,"subscription_id":sid,"start_date":req.StartDate,"end_date":req.EndDate,"amount":req.Amount,"amount_paid":req.AmountPaid,"payment_status":status})
