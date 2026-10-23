@@ -42,6 +42,10 @@ func main() {
 
     dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")
     db, err := sql.Open("postgres", dsn); if err != nil { log.Fatal(err) }
+    // Bound concurrent and idle connections to keep the app predictable on hosted Postgres.
+    db.SetMaxOpenConns(10)
+    db.SetMaxIdleConns(5)
+    db.SetConnMaxLifetime(5 * time.Minute)
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
     if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
@@ -70,7 +74,13 @@ func main() {
     handler := cors(logging(mux))
     port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
-    log.Fatal(http.ListenAndServe(":"+port, handler))
+    server := &http.Server{
+        Addr:              ":" + port,
+        Handler:           handler,
+        ReadHeaderTimeout: 5 * time.Second,
+        IdleTimeout:       60 * time.Second,
+    }
+    log.Fatal(server.ListenAndServe())
 }
 
 func loadDotEnv() {
