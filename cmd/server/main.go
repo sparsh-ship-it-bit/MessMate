@@ -112,28 +112,37 @@ func normalizeMealPlan(plan string) (string,error) {
 func paymentStatus(total,paid float64) string { if paid<=0{return "pending"}; if paid>=total{return "paid"}; return "partial" }
 
 func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
-    oid,_:=ownerID(r);var req consumerRequest
-    if decode(r,&req)!=nil||req.Name==""||req.Phone==""{errorJSON(w,400,"name and phone are required");return}
-    plan,err:=normalizeMealPlan(req.MealPlan);if err!=nil{errorJSON(w,400,err.Error());return}
-    if req.ConsumerID==""{req.ConsumerID="MM-"+strings.ToUpper(randomID()[:8])}
-    if req.StartDate==""{errorJSON(w,400,"start_date is required");return}
-    if req.EndDate==""{startTmp,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return};req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02")}
-    start,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return}
-    end,err:=time.Parse("2006-01-02",req.EndDate);if err!=nil||end.Before(start){errorJSON(w,400,"invalid end_date");return}
-    if req.Amount<=0{errorJSON(w,400,"amount must be greater than 0");return}
-    if req.AmountPaid<0||req.AmountPaid>req.Amount{errorJSON(w,400,"amount paid must be between 0 and total amount");return}
-    tx,err:=a.db.Begin();if err!=nil{errorJSON(w,500,"could not start transaction");return};defer tx.Rollback()
+    oid,ownerErr:=ownerID(r)
+    if ownerErr!=nil { log.Printf("createConsumer owner lookup failed: %v",ownerErr); errorJSON(w,401,"authentication required"); return }
+    var req consumerRequest
+    if err:=decode(r,&req);err!=nil { log.Printf("createConsumer invalid JSON: %v",err); errorJSON(w,400,"invalid request body"); return }
+    if req.Name==""||req.Phone=="" { log.Printf("createConsumer validation failed: name or phone missing"); errorJSON(w,400,"name and phone are required"); return }
+    plan,err:=normalizeMealPlan(req.MealPlan)
+    if err!=nil { log.Printf("createConsumer meal plan validation failed: %v",err); errorJSON(w,400,err.Error()); return }
+    if req.ConsumerID=="" { req.ConsumerID="MM-"+strings.ToUpper(randomID()[:8]) }
+    if req.StartDate=="" { log.Printf("createConsumer validation failed: start_date missing"); errorJSON(w,400,"start_date is required"); return }
+    if req.EndDate=="" { startTmp,e:=time.Parse("2006-01-02",req.StartDate); if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }; req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02") }
+    startDate,e:=time.Parse("2006-01-02",req.StartDate)
+    if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }
+    endDate,e:=time.Parse("2006-01-02",req.EndDate)
+    if e!=nil||endDate.Before(startDate) { log.Printf("createConsumer invalid end_date %q for start_date %q: %v",req.EndDate,req.StartDate,e); errorJSON(w,400,"invalid end_date"); return }
+    if req.Amount<=0 { log.Printf("createConsumer validation failed: amount must be positive (amount=%v)",req.Amount); errorJSON(w,400,"amount must be greater than 0"); return }
+    if req.AmountPaid<0||req.AmountPaid>req.Amount { log.Printf("createConsumer validation failed: amount_paid=%v amount=%v",req.AmountPaid,req.Amount); errorJSON(w,400,"amount paid must be between 0 and total amount"); return }
+    tx,err:=a.db.Begin()
+    if err!=nil { log.Printf("createConsumer begin transaction failed: %v",err); errorJSON(w,500,"could not start transaction"); return }
+    defer tx.Rollback()
     var id,qr,sid uuid.UUID
     err=tx.QueryRow(`INSERT INTO consumers(owner_id,consumer_id,name,phone,meal_plan) VALUES($1,$2,$3,$4,$5) RETURNING id,qr_token`,oid,req.ConsumerID,req.Name,req.Phone,plan).Scan(&id,&qr)
-    if err!=nil{log.Printf("createConsumer consumer insert failed: %v",err);if strings.Contains(strings.ToLower(err.Error()),"duplicate key"){errorJSON(w,409,"consumer ID already exists for this owner")}else{errorJSON(w,500,"database error while creating consumer")};return}
-    status:=paymentStatus(req.Amount,req.AmountPaid); month:=start.Format("January 2006")
-    err=tx.QueryRow(`INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,amount_paid,month_label,payment_status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,id,start,end,req.Amount,req.AmountPaid,month,status).Scan(&sid)
-    if err!=nil{log.Printf("createConsumer subscription insert failed: %v",err);errorJSON(w,500,"database error while creating subscription");return}
-    if req.AmountPaid>0 { if _,err=tx.Exec(`INSERT INTO payments(consumer_id,subscription_id,amount,method) VALUES($1,$2,$3,'cash')`,id,sid,req.AmountPaid);err!=nil{errorJSON(w,500,"could not record initial payment");return} }
-    if err=tx.Commit();err!=nil{errorJSON(w,500,"could not save consumer");return}
+    if err!=nil { log.Printf("createConsumer consumer insert failed: %v",err); if strings.Contains(strings.ToLower(err.Error()),"duplicate key") { errorJSON(w,409,"consumer ID already exists for this owner") } else { errorJSON(w,500,"database error while creating consumer") }; return }
+    status:=paymentStatus(req.Amount,req.AmountPaid)
+    month:=startDate.Format("January 2006")
+    err=tx.QueryRow(`INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,amount_paid,month_label,payment_status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,id,startDate,endDate,req.Amount,req.AmountPaid,month,status).Scan(&sid)
+    if err!=nil { log.Printf("createConsumer subscription insert failed: %v",err); errorJSON(w,500,"database error while creating subscription"); return }
+    if req.AmountPaid>0 { if _,err=tx.Exec(`INSERT INTO payments(consumer_id,subscription_id,amount,method) VALUES($1,$2,$3,'cash')`,id,sid,req.AmountPaid); err!=nil { log.Printf("createConsumer initial payment insert failed: %v",err); errorJSON(w,500,"database error while recording initial payment"); return } }
+    if err=tx.Commit();err!=nil { log.Printf("createConsumer transaction commit failed: %v",err); errorJSON(w,500,"database error while saving consumer"); return }
+    log.Printf("createConsumer success: consumer_id=%s owner_id=%s",id,oid)
     writeJSON(w,201,map[string]any{"id":id,"consumer_id":req.ConsumerID,"qr_token":qr,"subscription_id":sid,"start_date":req.StartDate,"end_date":req.EndDate,"amount":req.Amount,"amount_paid":req.AmountPaid,"payment_status":status})
 }
-
 func (a *App) listConsumers(w http.ResponseWriter,r *http.Request){
     oid,_:=ownerID(r);query:=fmt.Sprintf(`SELECT c.id,c.consumer_id,c.name,c.phone,c.meal_plan,c.active,c.qr_token,COALESCE(s.id,'00000000-0000-0000-0000-000000000000'),COALESCE(s.start_date,'0001-01-01'),COALESCE(s.end_date,'0001-01-01'),COALESCE(s.amount,0),COALESCE(NULLIF(s.monthly_amount,0),s.amount),COALESCE(s.amount_paid,0),COALESCE(s.month_label,''),COALESCE(s.payment_status,'pending') FROM consumers c LEFT JOIN LATERAL (SELECT * FROM subscriptions WHERE consumer_id=c.id ORDER BY end_date DESC LIMIT 1) s ON TRUE WHERE c.owner_id='%s'::uuid ORDER BY c.created_at DESC`,oid.String());rows,err:=a.db.Query(query);if err!=nil{log.Printf("listConsumers query failed: %v",err);errorJSON(w,500,"database error");return};defer rows.Close()
     out:=[]map[string]any{};for rows.Next(){var id,qr,sid uuid.UUID;var cid,name,phone,plan,month,status string;var active bool;var start,end time.Time;var amount,monthly,paid float64;if err:=rows.Scan(&id,&cid,&name,&phone,&plan,&active,&qr,&sid,&start,&end,&amount,&monthly,&paid,&month,&status);err!=nil{continue};status=displayedPaymentStatus(paid,amount,end,time.Now());out=append(out,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"meal_plan":plan,"active":active,"qr_token":qr,"subscription":map[string]any{"id":sid,"start_date":start.Format("2006-01-02"),"end_date":end.Format("2006-01-02"),"amount":amount,"monthly_amount":monthly,"amount_paid":paid,"month_label":month,"payment_status":status}})};writeJSON(w,200,out)
