@@ -20,16 +20,31 @@ func parseMonth(value string) (time.Time, time.Time, error) {
     }
     return start, start.AddDate(0, 1, 0).Add(-24 * time.Hour), nil
 }
-func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
-    // Subscription dates are calendar dates; compare using India local date,
-    // not the server's UTC date (Render commonly runs in UTC).
-    asOf = asOf.In(indiaLocation)
-    if !endDate.IsZero() { ey, em, ed := endDate.Date(); ay, am, ad := asOf.Date(); if ey < ay || (ey == ay && (em < am || (em == am && ed < ad))) { return "overdue" } }
-    if paid >= amount { return "paid" }
-    if paid > 0 { return "partial" }
-    return "pending"
+func dateBeforeInIndia(date, now time.Time) bool {
+    year, month, day := date.Date()
+    todayYear, todayMonth, todayDay := now.In(indiaLocation).Date()
+    return year < todayYear ||
+        (year == todayYear && (month < todayMonth ||
+            (month == todayMonth && day < todayDay)))
 }
 
+// A subscription becomes overdue when its coverage has ended, even if the
+// previous period was fully paid. This represents an overdue renewal.
+func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
+    if endDate.IsZero() || amount <= 0 {
+        return "pending"
+    }
+    if dateBeforeInIndia(endDate, asOf) {
+        return "overdue"
+    }
+    if paid >= amount {
+        return "paid"
+    }
+    if paid > 0 {
+        return "partial"
+    }
+    return "pending"
+}
 func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     oid, _ := ownerID(r)
     start, end, err := parseMonth(r.URL.Query().Get("month"))
