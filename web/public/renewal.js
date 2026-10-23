@@ -101,14 +101,7 @@
     el.querySelector('#mm-generate').onclick=generateQR;
     await loadInfo();
   }
-  // Renewal is handled by the React Subscriptions UI. The old capture-phase
-  // handler is intentionally removed so it cannot hijack the React Renew button.
-  const inject=()=>{
-    const h=[...document.querySelectorAll('h3')].find(x=>x.textContent.trim().startsWith('Outstanding payments'));
-    if(!h||document.getElementById('mm-collect-btn'))return;
-    const btn=document.createElement('button');btn.id='mm-collect-btn';btn.className='primary small';btn.textContent='Collect via QR';btn.onclick=openPayment;
-    h.parentElement.appendChild(btn);
-  };
-  new MutationObserver(inject).observe(document.body,{childList:true,subtree:true});
-  setInterval(inject,1200);
+  // Expose the Razorpay branch for the unified React payment-method selector.
+  // Do not inject a second Collect via QR button into the dashboard.
+  window.MessMateOpenRazorpayPayment = openPayment;
 })();
