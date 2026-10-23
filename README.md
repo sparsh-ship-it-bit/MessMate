@@ -16,7 +16,7 @@ MessMate is a backend-first B2B SaaS platform for mess owners to manage consumer
 Go, PostgreSQL, JWT, REST API
 
 ## Run
-1. Copy `.env.example` to `.env`.
+1. Copy `.env.example` to `.env` and replace the `JWT_SECRET` placeholder with a unique random secret of at least 32 characters.
 2. Start PostgreSQL.
 3. Run `psql $DATABASE_URL -f migrations/001_init.sql`.
 4. Run `go mod tidy`.
