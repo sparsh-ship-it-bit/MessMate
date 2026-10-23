@@ -47,3 +47,38 @@ MessMate follows Semantic Versioning (MAJOR.MINOR.PATCH):
 - MAJOR (3.0.0): major product changes, breaking changes, or a substantial new generation of the app.
 
 The current app version is **2.2.1**.
+
+
+## Payment behavior and verification
+
+- Manual payment recording updates the payment ledger and subscription balance in one database transaction.
+- Subscription payment status is derived from the amount paid and the subscription end date using India Standard Time (IST).
+- The direct UPI QR flow creates a standard `upi://pay` QR with the selected consumer, UPI ID, and prefilled amount. It does **not** receive a payment confirmation from a bank by itself. The owner must verify the credit in their bank/UPI app and then record the payment in MessMate.
+- Do not describe direct UPI QR collection as automatic payment verification. Automatic confirmation requires a supported payment provider integration and a configured, verified webhook.
+
+## Local checks
+
+Run these before deploying:
+
+```sh
+go test ./...
+go vet ./...
+```
+
+For the frontend:
+
+```sh
+cd web
+npm ci
+npm run build
+```
+
+## Pre-sale production checklist
+
+- [ ] Rotate any database credentials that may have been shared or exposed; keep secrets only in the deployment environment.
+- [ ] Verify that `JWT_SECRET` is unique and strong in production.
+- [ ] Test with two separate owner accounts to verify tenant isolation.
+- [ ] Test payment creation, partial payments, full payments, expired subscriptions, and date boundaries in IST.
+- [ ] Test the UPI QR with a small real payment and manually verify the bank credit before recording it.
+- [ ] Verify backup and restore procedures before using real customer data.
+- [ ] Review the deployed build and Render logs after each deployment.
