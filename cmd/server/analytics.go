@@ -53,15 +53,21 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     // Revenue is recognized when the payment was actually recorded,
     // not when the subscription period started.
     var earnings float64
-    _ = a.db.QueryRow(`
+    if err := a.db.QueryRow(`
         SELECT COALESCE(SUM(p.amount),0)
         FROM payments p
         JOIN consumers c ON c.id=p.consumer_id
         WHERE c.owner_id=$1 AND p.paid_at >= $2 AND p.paid_at < $3`,
-        oid,start,start.AddDate(0,1,0)).Scan(&earnings)
+        oid, start, start.AddDate(0, 1, 0)).Scan(&earnings); err != nil {
+        errorJSON(w, 500, "could not calculate monthly collections")
+        return
+    }
 
     var newConsumers int
-    _ = a.db.QueryRow(`SELECT COUNT(DISTINCT s.consumer_id) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date >= $2 AND s.start_date < $3`, oid,start.Format("2006-01-02"),start.AddDate(0,1,0).Format("2006-01-02")).Scan(&newConsumers)
+    if err := a.db.QueryRow(`SELECT COUNT(DISTINCT s.consumer_id) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date >= $2 AND s.start_date < $3`, oid, start.Format("2006-01-02"), start.AddDate(0, 1, 0).Format("2006-01-02")).Scan(&newConsumers); err != nil {
+        errorJSON(w, 500, "could not calculate new consumers")
+        return
+    }
 
     // Treat the selected month's status counts as a snapshot at month-end,
     // capped at today for the current month. Do not filter out subscriptions
@@ -77,7 +83,28 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     if err != nil { errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
-    for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,asOf){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
+    for rows.Next() {
+        var amount, paid float64
+        var endDate time.Time
+        if err := rows.Scan(&amount, &paid, &endDate); err != nil {
+            errorJSON(w, 500, "could not read subscription status data")
+            return
+        }
+        switch displayedPaymentStatus(paid, amount, endDate, asOf) {
+        case "paid":
+            paidCount++
+        case "partial":
+            partialCount++
+        case "pending":
+            pendingCount++
+        case "overdue":
+            overdueCount++
+        }
+    }
+    if err := rows.Err(); err != nil {
+        errorJSON(w, 500, "could not read subscription status data")
+        return
+    }
 
     type point struct { Month string `json:"month"`; Label string `json:"label"`; Earnings float64 `json:"earnings"` }
     trendRows,err:=a.db.Query(`
@@ -94,11 +121,40 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
         LEFT JOIN payment_revenue pr ON pr.revenue_at>=m.m AND pr.revenue_at<m.m+interval '1 month'
         GROUP BY m.m ORDER BY m.m`,start.Format("2006-01-02"),oid)
     if err!=nil{errorJSON(w,500,"database error");return};defer trendRows.Close()
-    trend:=[]point{};for trendRows.Next(){var p point;if trendRows.Scan(&p.Month,&p.Label,&p.Earnings)==nil{trend=append(trend,p)}}
+    trend := []point{}
+    for trendRows.Next() {
+        var p point
+        if err := trendRows.Scan(&p.Month, &p.Label, &p.Earnings); err != nil {
+            errorJSON(w, 500, "could not read monthly collections trend")
+            return
+        }
+        trend = append(trend, p)
+    }
+    if err := trendRows.Err(); err != nil {
+        errorJSON(w, 500, "could not read monthly collections trend")
+        return
+    }
 
     attendance:=map[string]int{"breakfast":0,"lunch":0,"dinner":0}
-    ar,err:=a.db.Query(`SELECT at.meal,COUNT(*) FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id=$1 AND at.attendance_date >= $2 AND at.attendance_date < $3 GROUP BY at.meal`,oid,start.Format("2006-01-02"),start.AddDate(0,1,0).Format("2006-01-02"))
-    if err==nil{defer ar.Close();for ar.Next(){var meal string;var count int;if ar.Scan(&meal,&count)==nil{attendance[meal]=count}}}
+    ar, err := a.db.Query(`SELECT at.meal,COUNT(*) FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id=$1 AND at.attendance_date >= $2 AND at.attendance_date < $3 GROUP BY at.meal`, oid, start.Format("2006-01-02"), start.AddDate(0, 1, 0).Format("2006-01-02"))
+    if err != nil {
+        errorJSON(w, 500, "could not calculate attendance analytics")
+        return
+    }
+    defer ar.Close()
+    for ar.Next() {
+        var meal string
+        var count int
+        if err := ar.Scan(&meal, &count); err != nil {
+            errorJSON(w, 500, "could not read attendance analytics")
+            return
+        }
+        attendance[meal] = count
+    }
+    if err := ar.Err(); err != nil {
+        errorJSON(w, 500, "could not read attendance analytics")
+        return
+    }
 
     writeJSON(w,200,map[string]any{"month":start.Format("2006-01"),"month_label":start.Format("January 2006"),"earnings":earnings,"new_consumers":newConsumers,"paid":paidCount,"partial":partialCount,"pending":pendingCount,"overdue":overdueCount,"attendance":attendance,"earnings_trend":trend})
 }
