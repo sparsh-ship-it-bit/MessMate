@@ -73,3 +73,12 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .meal-mini-track.breakfast i{background:#c6ff00}
 .meal-mini-track.lunch i{background:#65b8ff}
 .meal-mini-track.dinner i{background:#a98cff}
+
+/* Clear labels for the consumer's public ID and internal QR token */
+.qr-card{gap:12px}
+.qr-code-detail{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 14px;border:1px solid #263029;border-radius:12px;background:#0b100c}
+.qr-code-detail>span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8d9a8f;font-weight:700}
+.qr-code-detail>strong{font-size:14px;color:#eef3ee;overflow-wrap:anywhere}
+.qr-code-detail>strong.short-uuid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}
+.qr-code-detail>small{font-size:10px;line-height:1.5;color:#849187;text-align:center}
+.qr-code-detail .ghost{margin-top:5px}
