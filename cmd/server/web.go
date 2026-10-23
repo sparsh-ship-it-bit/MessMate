@@ -63,7 +63,6 @@ func staticCacheHeaders(next http.Handler) http.Handler {
         next.ServeHTTP(w, r)
     })
 }
-}
 
 type renewalRequest struct {
     ConsumerID string `json:"consumer_id"`
