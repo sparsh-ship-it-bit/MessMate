@@ -42,11 +42,11 @@
     }
     const el=document.createElement('div');el.id='mm-pay-backdrop';el.className='mm-pay-backdrop';
     const firstMonth=months()[0].v;
-    el.innerHTML=\`<div class="mm-pay-modal">
+    el.innerHTML=`<div class="mm-pay-modal">
       <div class="mm-pay-head"><div><h3>Collect payment</h3><div style="color:#7f8b81;font-size:12px;margin-top:4px">Payment is verified automatically. No UTR or owner confirmation is required.</div></div><button class="mm-pay-close" type="button">×</button></div>
       <div class="mm-pay-grid">
-        <label>Consumer<select id="mm-consumer">\${consumers.map(c=>\`<option value="\${c.id}">\${c.name} — \${c.consumer_id}</option>\`).join('')}</select></label>
-        <label>Month<select id="mm-month">\${months().map(m=>\`<option value="\${m.v}" \${m.v===firstMonth?'selected':''}>\${m.l}</option>\`).join('')}</select></label>
+        <label>Consumer<select id="mm-consumer">${consumers.map(c=>`<option value="${c.id}">${c.name} — ${c.consumer_id}</option>`).join('')}</select></label>
+        <label>Month<select id="mm-month">${months().map(m=>`<option value="${m.v}" ${m.v===firstMonth?'selected':''}>${m.l}</option>`).join('')}</select></label>
       </div>
       <div class="mm-pay-periods">
         <button type="button" class="mm-pay-period selected" data-period="full"><b>Full Month</b><small>1st to last day</small><div class="mm-pay-amount" id="mm-full">—</div></button>
@@ -55,7 +55,7 @@
       <div id="mm-qr-area"></div>
       <div class="mm-pay-actions"><button type="button" class="mm-pay-primary" id="mm-generate">Generate secure QR</button></div>
       <div id="mm-pay-message"></div>
-    </div>\`;
+    </div>`;
     document.body.appendChild(el);
     el.querySelector('.mm-pay-close').onclick=closeModal;
     el.onclick=e=>{if(e.target===el)closeModal()};
@@ -75,12 +75,12 @@
       const b=el.querySelector('#mm-generate');b.disabled=true;b.textContent='Generating…';
       try{
         const d=await api('/api/v1/payments/qr',{method:'POST',body:JSON.stringify({consumer_id:consumer().id,month:el.querySelector('#mm-month').value,period,amount})});
-        el.querySelector('#mm-qr-area').innerHTML=\`<div class="mm-pay-qr">
-          <img id="mm-qr" src="\${d.image_url}" alt="Secure payment QR">
-          <b>\${money(amount)} · \${monthLabel(el.querySelector('#mm-month').value)}</b>
+        el.querySelector('#mm-qr-area').innerHTML=`<div class="mm-pay-qr">
+          <img id="mm-qr" src="${d.image_url}" alt="Secure payment QR">
+          <b>${money(amount)} · ${monthLabel(el.querySelector('#mm-month').value)}</b>
           <small>Scan this QR to pay securely</small>
           <small style="color:#b7ff62">Waiting for payment confirmation…</small>
-        </div>\`;
+        </div>`;
         b.textContent='QR generated';
         pollStatus(d.intent_id);
       }catch(e){msg(e.message);b.disabled=false;b.textContent='Generate secure QR'}
