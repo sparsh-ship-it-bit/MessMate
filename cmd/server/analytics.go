@@ -29,41 +29,34 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     start, end, err := parseMonth(r.URL.Query().Get("month"))
     if err != nil { errorJSON(w,400,err.Error()); return }
 
-    // When a consumer is entered later with historical subscription dates,
-    // the first payment belongs to that subscription's start period rather
-    // than the date on which the owner entered the profile. Later payments
-    // remain recognized on their actual payment date.
+    // Revenue is recognized when the payment was actually recorded,
+    // not when the subscription period started.
     var earnings float64
     _ = a.db.QueryRow(`
-        WITH payment_revenue AS (
-            SELECT p.amount,
-                   CASE
-                       WHEN s.id IS NOT NULL AND p.id = (
-                           SELECT p2.id
-                           FROM payments p2
-                           WHERE p2.subscription_id = p.subscription_id
-                           ORDER BY p2.paid_at, p2.id
-                           LIMIT 1
-                       ) THEN s.start_date::timestamp
-                       ELSE p.paid_at
-                   END AS revenue_at
-            FROM payments p
-            JOIN consumers c ON c.id=p.consumer_id
-            LEFT JOIN subscriptions s ON s.id=p.subscription_id
-            WHERE c.owner_id=$1
-        )
-        SELECT COALESCE(SUM(amount),0)
-        FROM payment_revenue
-        WHERE revenue_at >= $2 AND revenue_at < $3`, oid,start,start.AddDate(0,1,0)).Scan(&earnings)
+        SELECT COALESCE(SUM(p.amount),0)
+        FROM payments p
+        JOIN consumers c ON c.id=p.consumer_id
+        WHERE c.owner_id=$1 AND p.paid_at >= $2 AND p.paid_at < $3`,
+        oid,start,start.AddDate(0,1,0)).Scan(&earnings)
 
     var newConsumers int
     _ = a.db.QueryRow(`SELECT COUNT(DISTINCT s.consumer_id) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date >= $2 AND s.start_date < $3`, oid,start,start.AddDate(0,1,0)).Scan(&newConsumers)
 
-    rows, err := a.db.Query(`SELECT DISTINCT ON (s.consumer_id) s.amount,s.amount_paid,s.end_date FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date <= $2 AND s.end_date >= $3 ORDER BY s.consumer_id,s.end_date DESC`, oid,end,start)
+    // Treat the selected month's status counts as a snapshot at month-end,
+    // capped at today for the current month. Do not filter out subscriptions
+    // that expired before the month began: those are overdue, not nonexistent.
+    asOf := end.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+    today := time.Now().In(time.FixedZone("IST",19800))
+    if asOf.After(today) { asOf = today }
+    rows, err := a.db.Query(`SELECT DISTINCT ON (s.consumer_id) s.amount,s.amount_paid,s.end_date
+        FROM subscriptions s
+        JOIN consumers c ON c.id=s.consumer_id
+        WHERE c.owner_id=$1 AND s.start_date <= $2
+        ORDER BY s.consumer_id,s.start_date DESC,s.end_date DESC`, oid,asOf.Format("2006-01-02"))
     if err != nil { errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
-    asOf:=time.Now().In(time.FixedZone("IST",19800));for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,asOf){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
+    for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,asOf){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
 
     type point struct { Month string `json:"month"`; Label string `json:"label"`; Earnings float64 `json:"earnings"` }
     trendRows,err:=a.db.Query(`
@@ -71,20 +64,9 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
             SELECT m
             FROM generate_series(date_trunc('month',$1::date)-interval '11 months',date_trunc('month',$1::date),interval '1 month') m
         ), payment_revenue AS (
-            SELECT p.amount,
-                   CASE
-                       WHEN s.id IS NOT NULL AND p.id = (
-                           SELECT p2.id
-                           FROM payments p2
-                           WHERE p2.subscription_id = p.subscription_id
-                           ORDER BY p2.paid_at, p2.id
-                           LIMIT 1
-                       ) THEN s.start_date::timestamp
-                       ELSE p.paid_at
-                   END AS revenue_at
+            SELECT p.amount,p.paid_at AS revenue_at
             FROM payments p
             JOIN consumers c ON c.id=p.consumer_id AND c.owner_id=$2
-            LEFT JOIN subscriptions s ON s.id=p.subscription_id
         )
         SELECT to_char(m.m,'YYYY-MM'),to_char(m.m,'Mon'),COALESCE(SUM(pr.amount),0)
         FROM months m
