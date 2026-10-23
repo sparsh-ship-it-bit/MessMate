@@ -46,7 +46,7 @@ MessMate follows Semantic Versioning (MAJOR.MINOR.PATCH):
 - MINOR (2.3.0): new backward-compatible features or meaningful feature updates.
 - MAJOR (3.0.0): major product changes, breaking changes, or a substantial new generation of the app.
 
-The current app version is **2.2.1**.
+The current app version is **2.3.0**.
 
 
 ## Payment behavior and verification
