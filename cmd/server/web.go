@@ -41,7 +41,28 @@ func registerWeb(mux *http.ServeMux) {
     if dir == "" {
         dir = "web/dist"
     }
-    mux.Handle("/", http.FileServer(http.Dir(dir)))
+    mux.Handle("/", staticCacheHeaders(http.FileServer(http.Dir(dir))))
+}
+
+func staticCacheHeaders(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        path := r.URL.Path
+        switch {
+        case strings.HasPrefix(path, "/assets/"):
+            // Vite emits content-hashed filenames in /assets, so these are safe to cache.
+            w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+        case path == "/" || path == "/index.html":
+            // Always revalidate HTML so a deployment's new asset references take effect.
+            w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+        case strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css"):
+            // Non-hashed standalone files can change independently of the HTML.
+            w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+        case strings.HasSuffix(path, ".svg") || strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".webp") || strings.HasSuffix(path, ".woff2"):
+            w.Header().Set("Cache-Control", "public, max-age=86400, must-revalidate")
+        }
+        next.ServeHTTP(w, r)
+    })
+}
 }
 
 type renewalRequest struct {
