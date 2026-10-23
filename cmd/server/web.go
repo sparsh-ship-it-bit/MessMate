@@ -151,7 +151,12 @@ func renewSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 type upiSettingsRequest struct { UPIID string }
-type upiQRRequest struct { ConsumerID string; Month string; Period string; Amount float64 }
+type upiQRRequest struct {
+    ConsumerID string `json:"consumer_id"`
+    Month string `json:"month"`
+    Period string `json:"period"`
+    Amount float64 `json:"amount"`
+}
 
 func paymentUPISettings(w http.ResponseWriter, r *http.Request) {
     ownerID, err := renewalOwnerID(r); if err != nil { errorJSON(w, http.StatusUnauthorized, err.Error()); return }
