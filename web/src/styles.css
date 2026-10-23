@@ -96,3 +96,12 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .photo-edit{position:absolute;right:-4px;bottom:-4px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#c6ff00;color:#080b08;border:2px solid #080e09;font-size:12px;font-weight:900;opacity:0;transform:scale(.85);transition:opacity .15s,transform .15s}
 .owner-photo-picker:hover .photo-edit,.owner-photo-picker:focus-within .photo-edit{opacity:1;transform:scale(1)}
 @media(max-width:650px){.brand.side{margin:0 8px 11px;gap:12px}.brand.side .brand-copy b{font-size:19px}.brand.side .brand-copy small{max-width:210px}}
+
+/* Tidy sidebar brand: profile picture and text share one clean alignment */
+.brand.side{align-items:center;gap:13px;margin:4px 8px 32px;padding:0}
+.brand.side .owner-photo-picker{width:48px;height:48px;flex:0 0 48px;align-self:center}
+.brand.side .owner-photo-picker .logo,.brand.side .owner-photo{width:48px;height:48px;border-radius:15px}
+.brand.side .brand-copy{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;align-self:center;gap:0}
+.brand.side .brand-copy b{margin:0;font-size:20px;line-height:1.2}
+.brand.side .brand-copy small{display:block;margin:4px 0 0;font-size:12px;line-height:1.35;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand.side .app-version{display:none}
