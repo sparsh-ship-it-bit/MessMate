@@ -59,12 +59,14 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
         JOIN consumers c ON c.id=p.consumer_id
         WHERE c.owner_id=$1 AND p.paid_at >= $2 AND p.paid_at < $3`,
         oid, start, start.AddDate(0, 1, 0)).Scan(&earnings); err != nil {
+        log.Printf("analytics monthly collections query failed: %v", err)
         errorJSON(w, 500, "could not calculate monthly collections")
         return
     }
 
     var newConsumers int
     if err := a.db.QueryRow(`SELECT COUNT(*) FROM consumers c WHERE c.owner_id=$1 AND c.created_at >= $2 AND c.created_at < $3`, oid, start, start.AddDate(0, 1, 0)).Scan(&newConsumers); err != nil {
+        log.Printf("analytics new consumers query failed: %v", err)
         errorJSON(w, 500, "could not calculate new consumers")
         return
     }
@@ -80,7 +82,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
         JOIN consumers c ON c.id=s.consumer_id
         WHERE c.owner_id=$1 AND s.start_date <= $2
         ORDER BY s.consumer_id,s.start_date DESC,s.end_date DESC`, oid,asOf.Format("2006-01-02"))
-    if err != nil { errorJSON(w,500,"database error"); return }
+    if err != nil { log.Printf("analytics subscription status query failed: %v", err); errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
     for rows.Next() {
@@ -120,7 +122,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
         FROM months m
         LEFT JOIN payment_revenue pr ON pr.revenue_at>=m.m AND pr.revenue_at<m.m+interval '1 month'
         GROUP BY m.m ORDER BY m.m`,start.Format("2006-01-02"),oid)
-    if err!=nil{errorJSON(w,500,"database error");return};defer trendRows.Close()
+    if err!=nil{log.Printf("analytics trend query failed: %v",err);errorJSON(w,500,"database error");return};defer trendRows.Close()
     trend := []point{}
     for trendRows.Next() {
         var p point
@@ -138,6 +140,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     attendance:=map[string]int{"breakfast":0,"lunch":0,"dinner":0}
     ar, err := a.db.Query(`SELECT at.meal,COUNT(*) FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id=$1 AND at.attendance_date >= $2 AND at.attendance_date < $3 GROUP BY at.meal`, oid, start.Format("2006-01-02"), start.AddDate(0, 1, 0).Format("2006-01-02"))
     if err != nil {
+        log.Printf("analytics attendance query failed: %v", err)
         errorJSON(w, 500, "could not calculate attendance analytics")
         return
     }
