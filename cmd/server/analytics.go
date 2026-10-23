@@ -63,7 +63,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     if err != nil { errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
-    for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,end){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
+    asOf:=time.Now().In(time.FixedZone("IST",19800));for rows.Next(){var amount,paid float64;var endDate time.Time;if rows.Scan(&amount,&paid,&endDate)!=nil{continue};switch displayedPaymentStatus(paid,amount,endDate,asOf){case "paid":paidCount++;case "partial":partialCount++;case "pending":pendingCount++;case "overdue":overdueCount++}}
 
     type point struct { Month string `json:"month"`; Label string `json:"label"`; Earnings float64 `json:"earnings"` }
     trendRows,err:=a.db.Query(`
