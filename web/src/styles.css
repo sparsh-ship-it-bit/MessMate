@@ -68,3 +68,8 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .summary-progress i{display:block;height:100%;background:#65ffa0;border-radius:99px;transition:width .2s}
 @media(max-width:1100px){.hero-stats{grid-template-columns:minmax(0,1fr)}.collection-summary,.consumer-summary{min-height:145px}}
 @media(max-width:650px){.summary-heading{margin-bottom:14px}.summary-metrics{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:14px}.summary-metric{padding:0 10px}.summary-metric:nth-child(odd){padding-left:0;border-left:0}.summary-metric strong{font-size:22px}.summary-metric span{font-size:9px}.summary-progress{margin-top:14px}}
+
+/* Meal-specific attendance colors: breakfast lime, lunch blue, dinner purple */
+.meal-mini-track.breakfast i{background:#c6ff00}
+.meal-mini-track.lunch i{background:#65b8ff}
+.meal-mini-track.dinner i{background:#a98cff}
