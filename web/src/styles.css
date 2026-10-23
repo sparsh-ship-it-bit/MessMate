@@ -113,3 +113,10 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .header-actions>.primary{height:54px;min-height:54px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;padding:0 22px;border-radius:16px;font-size:15px;line-height:1}
 .month-picker select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0 3px #c6ff0015}
 @media(max-width:650px){.header-actions{align-items:flex-end;gap:10px}.month-picker{min-width:0;width:min(228px,52vw);flex:1;font-size:13px}.month-picker select{height:54px;min-height:54px;padding-left:15px;padding-right:36px;background-position:right 12px center;background-size:15px 15px;font-size:13px}.header-actions>.primary{height:54px;min-height:54px;padding:0 16px;border-radius:15px;font-size:14px;flex-shrink:0}}
+
+/* Compact header controls — keep the month and action button proportionate */
+.header-actions{gap:10px;align-items:flex-end}
+.month-picker{min-width:200px;gap:5px;font-size:12px}
+.month-picker select{height:42px;min-height:42px;padding:0 34px 0 14px;border-radius:12px;background-position:right 12px center;background-size:13px 13px;font-size:13px;font-weight:600}
+.header-actions>.primary{height:42px;min-height:42px;padding:0 17px;border-radius:12px;font-size:13px}
+@media(max-width:650px){.header-actions{gap:8px}.month-picker{min-width:0;width:min(200px,50vw);flex:1}.month-picker select{height:42px;min-height:42px;padding-left:12px;padding-right:30px;background-position:right 10px center;background-size:12px 12px;font-size:12px}.header-actions>.primary{height:42px;min-height:42px;padding:0 12px;font-size:12px}}
