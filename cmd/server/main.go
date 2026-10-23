@@ -110,13 +110,13 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
     var id uuid.UUID; err=a.db.QueryRow(`INSERT INTO owners(name,email,phone,password_hash) VALUES($1,$2,$3,$4) RETURNING id`,req.Name,strings.ToLower(req.Email),req.Phone,string(hash)).Scan(&id)
     if err!=nil { errorJSON(w,409,"email already registered"); return }
     token,err:=a.token(id.String()); if err!=nil { errorJSON(w,500,"could not create token"); return }
-    writeJSON(w,201,map[string]any{"owner_id":id,"token":token})
+    writeJSON(w,201,map[string]any{"owner_id":id,"name":strings.TrimSpace(req.Name),"token":token})
 }
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
     var req loginRequest; if decode(r,&req)!=nil { errorJSON(w,400,"invalid request"); return }
-    var id uuid.UUID; var hash string; err:=a.db.QueryRow(`SELECT id,password_hash FROM owners WHERE email=$1`,strings.ToLower(req.Email)).Scan(&id,&hash)
+    var id uuid.UUID; var hash,name string; err:=a.db.QueryRow(`SELECT id,name,password_hash FROM owners WHERE email=$1`,strings.ToLower(req.Email)).Scan(&id,&name,&hash)
     if err!=nil || bcrypt.CompareHashAndPassword([]byte(hash),[]byte(req.Password))!=nil { errorJSON(w,401,"invalid email or password"); return }
-    token,err:=a.token(id.String()); if err!=nil { errorJSON(w,500,"could not create token"); return }; writeJSON(w,200,map[string]any{"owner_id":id,"token":token})
+    token,err:=a.token(id.String()); if err!=nil { errorJSON(w,500,"could not create token"); return }; writeJSON(w,200,map[string]any{"owner_id":id,"name":strings.TrimSpace(name),"token":token})
 }
 func (a *App) token(ownerID string)(string,error){ now:=time.Now(); claims:=OwnerClaims{OwnerID:ownerID,RegisteredClaims:jwt.RegisteredClaims{Issuer:"messmate",Subject:ownerID,IssuedAt:jwt.NewNumericDate(now),ExpiresAt:jwt.NewNumericDate(now.Add(a.ttl)),ID:randomID()}}; return jwt.NewWithClaims(jwt.SigningMethodHS256,claims).SignedString(a.jwtSecret) }
 func randomID() string { b:=make([]byte,12); _,_=rand.Read(b); return base64.RawURLEncoding.EncodeToString(b) }
