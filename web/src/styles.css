@@ -82,3 +82,17 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .qr-code-detail>strong.short-uuid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}
 .qr-code-detail>small{font-size:10px;line-height:1.5;color:#849187;text-align:center}
 .qr-code-detail .ghost{margin-top:5px}
+
+/* Align the MessMate wordmark and owner profile in the sidebar */
+.brand.side{display:flex;align-items:center;gap:12px;margin:3px 8px 30px;min-width:0}
+.brand.side .brand-copy{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;min-width:0;line-height:1.2}
+.brand.side .brand-copy b{font-size:20px;line-height:1.15;letter-spacing:-.035em}
+.brand.side .brand-copy small{font-size:12px;line-height:1.35;margin-top:4px;color:#8c998d;white-space:nowrap;max-width:145px;overflow:hidden;text-overflow:ellipsis}
+.brand.side .app-version{display:block;font-size:10px;line-height:1.3;font-style:normal;margin-top:5px;color:#627064}
+.owner-photo-picker{position:relative;display:block;flex:none;width:44px;height:44px;margin:0;cursor:pointer}
+.owner-photo-picker input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;margin:0}
+.owner-photo-picker .logo,.owner-photo{display:grid;place-items:center;width:44px;height:44px;border-radius:14px}
+.owner-photo-picker .owner-photo{object-fit:cover;border:1px solid #34452f}
+.photo-edit{position:absolute;right:-4px;bottom:-4px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#c6ff00;color:#080b08;border:2px solid #080e09;font-size:12px;font-weight:900;opacity:0;transform:scale(.85);transition:opacity .15s,transform .15s}
+.owner-photo-picker:hover .photo-edit,.owner-photo-picker:focus-within .photo-edit{opacity:1;transform:scale(1)}
+@media(max-width:650px){.brand.side{margin:0 8px 11px;gap:12px}.brand.side .brand-copy b{font-size:19px}.brand.side .brand-copy small{max-width:210px}}
