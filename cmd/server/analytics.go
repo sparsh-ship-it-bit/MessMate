@@ -8,16 +8,22 @@ import (
     "github.com/google/uuid"
 )
 
-func parseMonth(value string) (time.Time, time.Time, error) {
-    if value == "" { value = time.Now().Format("2006-01") }
-    start, err := time.Parse("2006-01", value)
-    if err != nil { return time.Time{}, time.Time{}, errors.New("month must use YYYY-MM format") }
-    return start, start.AddDate(0, 1, 0).Add(-24*time.Hour), nil
-}
+var indiaLocation = time.FixedZone("IST", 5*60*60+30*60)
 
-// A subscription becomes overdue when its coverage has ended, even if the
-// previous period was fully paid. This represents an overdue renewal.
+func parseMonth(value string) (time.Time, time.Time, error) {
+    if value == "" {
+        value = time.Now().In(indiaLocation).Format("2006-01")
+    }
+    start, err := time.ParseInLocation("2006-01", value, indiaLocation)
+    if err != nil {
+        return time.Time{}, time.Time{}, errors.New("month must use YYYY-MM format")
+    }
+    return start, start.AddDate(0, 1, 0).Add(-24 * time.Hour), nil
+}
 func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
+    // Subscription dates are calendar dates; compare using India local date,
+    // not the server's UTC date (Render commonly runs in UTC).
+    asOf = asOf.In(indiaLocation)
     if !endDate.IsZero() { ey, em, ed := endDate.Date(); ay, am, ad := asOf.Date(); if ey < ay || (ey == ay && (em < am || (em == am && ed < ad))) { return "overdue" } }
     if paid >= amount { return "paid" }
     if paid > 0 { return "partial" }
@@ -46,7 +52,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     // capped at today for the current month. Do not filter out subscriptions
     // that expired before the month began: those are overdue, not nonexistent.
     asOf := end.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
-    today := time.Now().In(time.FixedZone("IST",19800))
+    today := time.Now().In(indiaLocation)
     if asOf.After(today) { asOf = today }
     rows, err := a.db.Query(`SELECT DISTINCT ON (s.consumer_id) s.amount,s.amount_paid,s.end_date
         FROM subscriptions s
@@ -64,7 +70,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
             SELECT m
             FROM generate_series(date_trunc('month',$1::date)-interval '11 months',date_trunc('month',$1::date),interval '1 month') m
         ), payment_revenue AS (
-            SELECT p.amount,p.paid_at AS revenue_at
+            SELECT p.amount,p.paid_at AT TIME ZONE 'Asia/Kolkata' AS revenue_at
             FROM payments p
             JOIN consumers c ON c.id=p.consumer_id AND c.owner_id=$2
         )
