@@ -34,12 +34,18 @@ type paymentRequest struct { ConsumerID string `json:"consumer_id"`; Subscriptio
 type attendanceRequest struct { QRToken string `json:"qr_token"`; Meal string `json:"meal"` }
 
 func main() {
+    loadDotEnv()
+    jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+    if len(jwtSecret) < 32 || jwtSecret == "dev-secret-change-me" || jwtSecret == "change-this-in-production" || strings.Contains(jwtSecret, "replace-with-a-strong-random-secret") {
+        log.Fatal("JWT_SECRET must be set to a unique secret of at least 32 characters")
+    }
+
     dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/messmate?sslmode=disable")
     db, err := sql.Open("postgres", dsn); if err != nil { log.Fatal(err) }
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
     if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
-    app := &App{db: db, jwtSecret: []byte(getenv("JWT_SECRET", "dev-secret-change-me")), ttl: time.Duration(ttlHours)*time.Hour}
+    app := &App{db: db, jwtSecret: []byte(jwtSecret), ttl: time.Duration(ttlHours)*time.Hour}
     mux := http.NewServeMux()
     mux.HandleFunc("GET /health", app.health)
     mux.HandleFunc("POST /api/v1/auth/register", app.register)
@@ -65,6 +71,31 @@ func main() {
     port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
     log.Fatal(http.ListenAndServe(":"+port, handler))
+}
+
+func loadDotEnv() {
+    data, err := os.ReadFile(".env")
+    if err != nil {
+        return // Production deployments provide environment variables directly.
+    }
+    for _, line := range strings.Split(string(data), "\n") {
+        line = strings.TrimSpace(line)
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+        key, value, ok := strings.Cut(line, "=")
+        if !ok {
+            continue
+        }
+        key = strings.TrimSpace(key)
+        value = strings.Trim(strings.TrimSpace(value), "\"'")
+        if key == "" {
+            continue
+        }
+        if _, exists := os.LookupEnv(key); !exists {
+            _ = os.Setenv(key, value)
+        }
+    }
 }
 
 func getenv(k, fallback string) string { if v:=os.Getenv(k); v!="" { return v }; return fallback }
@@ -95,10 +126,10 @@ func ownerID(r *http.Request)(uuid.UUID,error){v:=r.Context().Value(ownerKey); i
 func (a *App) dashboard(w http.ResponseWriter,r *http.Request){
     oid,_:=ownerID(r); var active,expiring,pending,attendance int; var collections float64
     _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers WHERE owner_id=$1 AND active`,oid).Scan(&active)
-    _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers c JOIN subscriptions s ON s.consumer_id=c.id WHERE c.owner_id=$1 AND s.end_date=CURRENT_DATE`,oid).Scan(&expiring)
-    _=a.db.QueryRow(`SELECT COUNT(*) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.payment_status <> 'paid' AND s.end_date>=CURRENT_DATE`,oid).Scan(&pending)
-    _=a.db.QueryRow(`SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN consumers c ON c.id=p.consumer_id WHERE c.owner_id=$1 AND p.paid_at::date=CURRENT_DATE`,oid).Scan(&collections)
-    _=a.db.QueryRow(`SELECT COUNT(*) FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id=$1 AND at.attendance_date=CURRENT_DATE`,oid).Scan(&attendance)
+    _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers c JOIN subscriptions s ON s.consumer_id=c.id WHERE c.owner_id=$1 AND s.end_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date`,oid).Scan(&expiring)
+    _=a.db.QueryRow(`SELECT COUNT(*) FROM consumers c JOIN LATERAL (SELECT amount,amount_paid FROM subscriptions WHERE consumer_id=c.id ORDER BY end_date DESC,created_at DESC LIMIT 1) s ON TRUE WHERE c.owner_id=$1 AND s.amount_paid<s.amount`,oid).Scan(&pending)
+    _=a.db.QueryRow(`SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN consumers c ON c.id=p.consumer_id WHERE c.owner_id=$1 AND (p.paid_at AT TIME ZONE 'Asia/Kolkata')::date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date`,oid).Scan(&collections)
+    _=a.db.QueryRow(`SELECT COUNT(*) FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id=$1 AND at.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date`,oid).Scan(&attendance)
     writeJSON(w,200,map[string]any{"active_consumers":active,"expiring_today":expiring,"pending_payments":pending,"today_collections":collections,"today_attendance":attendance})
 }
 
@@ -161,26 +192,191 @@ func (a *App) updateConsumer(w http.ResponseWriter,r *http.Request){
 func (a *App) deleteConsumer(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid consumer id");return};res,err:=a.db.Exec(`DELETE FROM consumers WHERE id=$1 AND owner_id=$2`,id,oid);if err!=nil{errorJSON(w,500,"database error");return};n,_:=res.RowsAffected();if n==0{errorJSON(w,404,"consumer not found");return};w.WriteHeader(http.StatusNoContent)}
 func (a *App) consumerQR(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid consumer id");return};var token uuid.UUID;var name,cid string;if err=a.db.QueryRow(`SELECT qr_token,name,consumer_id FROM consumers WHERE id=$1 AND owner_id=$2`,id,oid).Scan(&token,&name,&cid);err!=nil{errorJSON(w,404,"consumer not found");return};png,err:=qrcode.Encode(token.String(),qrcode.Medium,256);if err!=nil{errorJSON(w,500,"could not generate QR");return};writeJSON(w,200,map[string]any{"consumer_id":cid,"name":name,"qr_token":token,"format":"png","image_base64":base64.StdEncoding.EncodeToString(png)})}
 
-func (a *App) createSubscription(w http.ResponseWriter,r *http.Request){
-    oid,_:=ownerID(r);var req subscriptionRequest;if decode(r,&req)!=nil{errorJSON(w,400,"invalid request");return};cid,err:=uuid.Parse(req.ConsumerID);if err!=nil{errorJSON(w,400,"consumer_id must be a UUID");return};start,err:=time.Parse("2006-01-02",req.StartDate);if err!=nil{errorJSON(w,400,"invalid start_date");return};end,err:=time.Parse("2006-01-02",req.EndDate);if err!=nil||end.Before(start){errorJSON(w,400,"invalid end_date");return};if req.Amount<0||req.AmountPaid<0||req.AmountPaid>req.Amount{errorJSON(w,400,"amount paid must be between 0 and total amount");return};req.PaymentStatus=paymentStatus(req.Amount,req.AmountPaid);if req.MonthLabel==""{req.MonthLabel=start.Format("January 2006")}
-    var sid uuid.UUID;err=a.db.QueryRow(`INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,amount_paid,month_label,payment_status) SELECT $1,$2,$3,$4,$5,$6,$7 WHERE EXISTS(SELECT 1 FROM consumers WHERE id=$1 AND owner_id=$8) RETURNING id`,cid,start,end,req.Amount,req.AmountPaid,req.MonthLabel,req.PaymentStatus,oid).Scan(&sid);if err!=nil{errorJSON(w,404,"consumer not found or subscription could not be created");return};if req.AmountPaid>0{_,_=a.db.Exec(`INSERT INTO payments(consumer_id,subscription_id,amount,method) VALUES($1,$2,$3,'cash')`,cid,sid,req.AmountPaid)};writeJSON(w,201,map[string]any{"id":sid,"consumer_id":cid,"start_date":req.StartDate,"end_date":req.EndDate,"amount":req.Amount,"amount_paid":req.AmountPaid,"month_label":req.MonthLabel,"payment_status":req.PaymentStatus})
+func (a *App) createSubscription(w http.ResponseWriter, r *http.Request) {
+    oid, ownerErr := ownerID(r)
+    if ownerErr != nil {
+        errorJSON(w, http.StatusUnauthorized, "authentication required")
+        return
+    }
+
+    var req subscriptionRequest
+    if decode(r, &req) != nil {
+        errorJSON(w, http.StatusBadRequest, "invalid request")
+        return
+    }
+    cid, err := uuid.Parse(req.ConsumerID)
+    if err != nil {
+        errorJSON(w, http.StatusBadRequest, "consumer_id must be a UUID")
+        return
+    }
+    start, err := time.Parse("2006-01-02", req.StartDate)
+    if err != nil {
+        errorJSON(w, http.StatusBadRequest, "invalid start_date")
+        return
+    }
+    end, err := time.Parse("2006-01-02", req.EndDate)
+    if err != nil || end.Before(start) {
+        errorJSON(w, http.StatusBadRequest, "invalid end_date")
+        return
+    }
+    if req.Amount <= 0 || req.AmountPaid < 0 || req.AmountPaid > req.Amount {
+        errorJSON(w, http.StatusBadRequest, "amount must be positive and amount_paid must be between zero and amount")
+        return
+    }
+    req.PaymentStatus = paymentStatus(req.Amount, req.AmountPaid)
+    if req.MonthLabel == "" {
+        req.MonthLabel = start.Format("January 2006")
+    }
+
+    tx, err := a.db.Begin()
+    if err != nil {
+        errorJSON(w, http.StatusInternalServerError, "could not start subscription")
+        return
+    }
+    defer tx.Rollback()
+
+    var sid uuid.UUID
+    err = tx.QueryRow(`INSERT INTO subscriptions(consumer_id,start_date,end_date,amount,amount_paid,month_label,payment_status)
+        SELECT $1,$2,$3,$4,$5,$6,$7
+        WHERE EXISTS(SELECT 1 FROM consumers WHERE id=$1 AND owner_id=$8)
+        RETURNING id`, cid, start, end, req.Amount, req.AmountPaid, req.MonthLabel, req.PaymentStatus, oid).Scan(&sid)
+    if err != nil {
+        errorJSON(w, http.StatusNotFound, "consumer not found or subscription could not be created")
+        return
+    }
+
+    if req.AmountPaid > 0 {
+        if _, err = tx.Exec(`INSERT INTO payments(consumer_id,subscription_id,amount,method)
+            VALUES($1,$2,$3,'cash')`, cid, sid, req.AmountPaid); err != nil {
+            log.Printf("createSubscription payment insert failed: %v", err)
+            errorJSON(w, http.StatusInternalServerError, "could not record initial payment")
+            return
+        }
+    }
+    if err = tx.Commit(); err != nil {
+        log.Printf("createSubscription commit failed: %v", err)
+        errorJSON(w, http.StatusInternalServerError, "could not save subscription")
+        return
+    }
+
+    writeJSON(w, http.StatusCreated, map[string]any{
+        "id": sid,
+        "consumer_id": cid,
+        "start_date": req.StartDate,
+        "end_date": req.EndDate,
+        "amount": req.Amount,
+        "amount_paid": req.AmountPaid,
+        "month_label": req.MonthLabel,
+        "payment_status": req.PaymentStatus,
+    })
 }
-func (a *App) expiringToday(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.id,c.consumer_id,c.name,c.phone,s.amount,s.amount_paid,s.end_date FROM consumers c JOIN subscriptions s ON s.consumer_id=c.id WHERE c.owner_id='%s'::uuid AND s.end_date=CURRENT_DATE ORDER BY c.name`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var id uuid.UUID;var cid,name,phone string;var amount,paid float64;var end time.Time;if rows.Scan(&id,&cid,&name,&phone,&amount,&paid,&end)==nil{status:=displayedPaymentStatus(paid,amount,end,time.Now());out=append(out,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"amount":amount,"amount_paid":paid,"payment_status":status,"reminder_eligible":status!="paid"})}};writeJSON(w,200,out)}
+func (a *App) expiringToday(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.id,c.consumer_id,c.name,c.phone,s.amount,s.amount_paid,s.end_date FROM consumers c JOIN subscriptions s ON s.consumer_id=c.id WHERE c.owner_id='%s'::uuid AND s.end_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY c.name`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var id uuid.UUID;var cid,name,phone string;var amount,paid float64;var end time.Time;if rows.Scan(&id,&cid,&name,&phone,&amount,&paid,&end)==nil{status:=displayedPaymentStatus(paid,amount,end,time.Now());out=append(out,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"amount":amount,"amount_paid":paid,"payment_status":status,"reminder_eligible":status!="paid"})}};writeJSON(w,200,out)}
 func (a *App) pendingPayments(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.id,c.consumer_id,c.name,c.phone,s.end_date,s.amount,s.amount_paid FROM consumers c JOIN LATERAL (SELECT * FROM subscriptions WHERE consumer_id=c.id ORDER BY end_date DESC LIMIT 1) s ON TRUE WHERE c.owner_id='%s'::uuid AND s.amount_paid<s.amount ORDER BY s.end_date`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var id uuid.UUID;var cid,name,phone string;var end time.Time;var amount,paid float64;if rows.Scan(&id,&cid,&name,&phone,&end,&amount,&paid)==nil{out=append(out,map[string]any{"id":id,"consumer_id":cid,"name":name,"phone":phone,"end_date":end.Format("2006-01-02"),"amount":amount,"amount_paid":paid,"due":amount-paid,"payment_status":displayedPaymentStatus(paid,amount,end,time.Now())})}};writeJSON(w,200,out)}
 func (a *App) recentPayments(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT p.id,c.consumer_id,c.name,p.amount,p.method,COALESCE(p.reference,''),p.paid_at FROM payments p JOIN consumers c ON c.id=p.consumer_id WHERE c.owner_id='%s'::uuid ORDER BY p.paid_at DESC LIMIT 10`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var id uuid.UUID;var cid,name,method,ref string;var amount float64;var paidAt time.Time;if rows.Scan(&id,&cid,&name,&amount,&method,&ref,&paidAt)==nil{out=append(out,map[string]any{"id":id,"consumer_id":cid,"name":name,"amount":amount,"method":method,"reference":ref,"paid_at":paidAt})}};writeJSON(w,200,out)}
-func (a *App) createPayment(w http.ResponseWriter,r *http.Request){
-    oid,_:=ownerID(r);var req paymentRequest;if decode(r,&req)!=nil||req.Amount<=0{errorJSON(w,400,"consumer_id and positive amount are required");return};cid,err:=uuid.Parse(req.ConsumerID);if err!=nil{errorJSON(w,400,"invalid consumer_id");return};if req.Method==""{req.Method="cash"}
-    var sid uuid.UUID;var total,paid float64;query:=`SELECT s.id,s.amount,s.amount_paid FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE s.consumer_id=$1 AND c.owner_id=$2 ORDER BY s.end_date DESC LIMIT 1`;err=a.db.QueryRow(query,cid,oid).Scan(&sid,&total,&paid);if err!=nil{errorJSON(w,404,"active subscription not found");return};if req.SubscriptionID!=""{sid,err=uuid.Parse(req.SubscriptionID);if err!=nil{errorJSON(w,400,"invalid subscription_id");return};err=a.db.QueryRow(`SELECT s.amount,s.amount_paid FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE s.id=$1 AND s.consumer_id=$2 AND c.owner_id=$3`,sid,cid,oid).Scan(&total,&paid);if err!=nil{errorJSON(w,404,"subscription not found");return}}
-    if paid+req.Amount>total{errorJSON(w,400,fmt.Sprintf("payment exceeds remaining due of %.2f",total-paid));return}
-    var pid uuid.UUID;err=a.db.QueryRow(`INSERT INTO payments(consumer_id,subscription_id,amount,method,reference) VALUES($1,$2,$3,$4,$5) RETURNING id`,cid,sid,req.Amount,req.Method,req.Reference).Scan(&pid);if err!=nil{errorJSON(w,500,"payment failed");return};newPaid:=paid+req.Amount;_,_=a.db.Exec(`UPDATE subscriptions SET amount_paid=$1,payment_status=$2 WHERE id=$3`,newPaid,paymentStatus(total,newPaid),sid);writeJSON(w,201,map[string]any{"id":pid,"consumer_id":cid,"subscription_id":sid,"amount":req.Amount,"amount_paid":newPaid,"due":total-newPaid,"method":req.Method})
+func (a *App) createPayment(w http.ResponseWriter, r *http.Request) {
+    oid, ownerErr := ownerID(r)
+    if ownerErr != nil {
+        errorJSON(w, http.StatusUnauthorized, "authentication required")
+        return
+    }
+
+    var req paymentRequest
+    if decode(r, &req) != nil || req.Amount <= 0 {
+        errorJSON(w, http.StatusBadRequest, "consumer_id and positive amount are required")
+        return
+    }
+    cid, err := uuid.Parse(req.ConsumerID)
+    if err != nil {
+        errorJSON(w, http.StatusBadRequest, "invalid consumer_id")
+        return
+    }
+    if req.Method == "" {
+        req.Method = "cash"
+    }
+    switch req.Method {
+    case "cash", "upi", "bank", "card":
+    default:
+        errorJSON(w, http.StatusBadRequest, "method must be cash, upi, bank or card")
+        return
+    }
+
+    tx, err := a.db.Begin()
+    if err != nil {
+        errorJSON(w, http.StatusInternalServerError, "could not start payment")
+        return
+    }
+    defer tx.Rollback()
+
+    var sid uuid.UUID
+    var total, paid float64
+    if req.SubscriptionID == "" {
+        err = tx.QueryRow(`SELECT s.id, s.amount, s.amount_paid
+            FROM subscriptions s
+            JOIN consumers c ON c.id = s.consumer_id
+            WHERE s.consumer_id = $1 AND c.owner_id = $2
+            ORDER BY s.end_date DESC, s.created_at DESC
+            LIMIT 1 FOR UPDATE OF s`, cid, oid).Scan(&sid, &total, &paid)
+    } else {
+        sid, err = uuid.Parse(req.SubscriptionID)
+        if err != nil {
+            errorJSON(w, http.StatusBadRequest, "invalid subscription_id")
+            return
+        }
+        err = tx.QueryRow(`SELECT s.amount, s.amount_paid
+            FROM subscriptions s
+            JOIN consumers c ON c.id = s.consumer_id
+            WHERE s.id = $1 AND s.consumer_id = $2 AND c.owner_id = $3
+            FOR UPDATE OF s`, sid, cid, oid).Scan(&total, &paid)
+    }
+    if err != nil {
+        errorJSON(w, http.StatusNotFound, "subscription not found")
+        return
+    }
+
+    remaining := total - paid
+    if req.Amount > remaining+0.0001 {
+        errorJSON(w, http.StatusBadRequest, fmt.Sprintf("payment exceeds remaining due of %.2f", remaining))
+        return
+    }
+
+    var pid uuid.UUID
+    if err = tx.QueryRow(`INSERT INTO payments(consumer_id,subscription_id,amount,method,reference)
+        VALUES($1,$2,$3,$4,$5) RETURNING id`, cid, sid, req.Amount, req.Method, req.Reference).Scan(&pid); err != nil {
+        log.Printf("createPayment insert failed: %v", err)
+        errorJSON(w, http.StatusInternalServerError, "payment failed")
+        return
+    }
+
+    newPaid := paid + req.Amount
+    if _, err = tx.Exec(`UPDATE subscriptions SET amount_paid=$1,payment_status=$2 WHERE id=$3`,
+        newPaid, paymentStatus(total, newPaid), sid); err != nil {
+        log.Printf("createPayment subscription update failed: %v", err)
+        errorJSON(w, http.StatusInternalServerError, "could not update subscription balance")
+        return
+    }
+    if err = tx.Commit(); err != nil {
+        log.Printf("createPayment commit failed: %v", err)
+        errorJSON(w, http.StatusInternalServerError, "could not save payment")
+        return
+    }
+
+    writeJSON(w, http.StatusCreated, map[string]any{
+        "id": pid,
+        "consumer_id": cid,
+        "subscription_id": sid,
+        "amount": req.Amount,
+        "amount_paid": newPaid,
+        "due": total - newPaid,
+        "method": req.Method,
+    })
 }
 func (a *App) scanAttendance(w http.ResponseWriter,r *http.Request){
     oid,_:=ownerID(r);var req attendanceRequest;if decode(r,&req)!=nil{errorJSON(w,400,"invalid request");return};if req.Meal!="breakfast"&&req.Meal!="lunch"&&req.Meal!="dinner"{errorJSON(w,400,"meal must be breakfast, lunch or dinner");return};token,err:=uuid.Parse(req.QRToken);if err!=nil{errorJSON(w,400,"invalid qr_token");return};var cid uuid.UUID;var consumerID,name,plan string;var active bool;err=a.db.QueryRow(`SELECT c.id,c.consumer_id,c.name,c.meal_plan,c.active FROM consumers c WHERE c.qr_token=$1 AND c.owner_id=$2`,token,oid).Scan(&cid,&consumerID,&name,&plan,&active);if err!=nil{errorJSON(w,404,"consumer not found");return};if !active{errorJSON(w,403,"consumer is inactive");return};if plan!="all"&&!containsMeal(plan,req.Meal){errorJSON(w,403,"consumer is not subscribed to this meal");return}
-    var end time.Time;err=a.db.QueryRow(`SELECT end_date FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1`,cid).Scan(&end);if err!=nil||end.Before(time.Now().Truncate(24*time.Hour)){errorJSON(w,403,"consumer subscription is not active");return}
-    var aid uuid.UUID;err=a.db.QueryRow(`INSERT INTO attendance(consumer_id,attendance_date,meal) VALUES($1,CURRENT_DATE,$2) ON CONFLICT(consumer_id,attendance_date,meal) DO NOTHING RETURNING id`,cid,req.Meal).Scan(&aid);if err!=nil{errorJSON(w,409,"attendance already marked for this meal");return};writeJSON(w,201,map[string]any{"attendance_id":aid,"consumer_id":consumerID,"name":name,"meal":req.Meal,"date":time.Now().Format("2006-01-02"),"status":"marked"})
+    var end time.Time;err=a.db.QueryRow(`SELECT end_date FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1`,cid).Scan(&end);if err!=nil||dateBeforeInIndia(end, time.Now()){errorJSON(w,403,"consumer subscription is not active");return}
+    var aid uuid.UUID;err=a.db.QueryRow(`INSERT INTO attendance(consumer_id,attendance_date,meal) VALUES($1,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,$2) ON CONFLICT(consumer_id,attendance_date,meal) DO NOTHING RETURNING id`,cid,req.Meal).Scan(&aid);if err!=nil{errorJSON(w,409,"attendance already marked for this meal");return};writeJSON(w,201,map[string]any{"attendance_id":aid,"consumer_id":consumerID,"name":name,"meal":req.Meal,"date":time.Now().In(indiaLocation).Format("2006-01-02"),"status":"marked"})
 }
 func containsMeal(plan,meal string) bool { for _,m:=range strings.Split(plan,","){if m==meal{return true}};return false }
-func (a *App) todayAttendance(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.consumer_id,c.name,at.meal,at.scanned_at FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id='%s'::uuid AND at.attendance_date=CURRENT_DATE ORDER BY at.scanned_at DESC`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var cid,name,meal string;var scanned time.Time;if rows.Scan(&cid,&name,&meal,&scanned)==nil{out=append(out,map[string]any{"consumer_id":cid,"name":name,"meal":meal,"scanned_at":scanned})}};writeJSON(w,200,out)}
+func (a *App) todayAttendance(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.consumer_id,c.name,at.meal,at.scanned_at FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id='%s'::uuid AND at.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY at.scanned_at DESC`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var cid,name,meal string;var scanned time.Time;if rows.Scan(&cid,&name,&meal,&scanned)==nil{out=append(out,map[string]any{"consumer_id":cid,"name":name,"meal":meal,"scanned_at":scanned})}};writeJSON(w,200,out)}
 func logging(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){start:=time.Now();next.ServeHTTP(w,r);log.Printf("%s %s %s",r.Method,r.URL.Path,time.Since(start))})}
-func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
+func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PUT, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
 var _ = fmt.Sprintf
