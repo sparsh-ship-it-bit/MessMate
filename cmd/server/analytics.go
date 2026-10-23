@@ -64,7 +64,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     }
 
     var newConsumers int
-    if err := a.db.QueryRow(`SELECT COUNT(DISTINCT s.consumer_id) FROM subscriptions s JOIN consumers c ON c.id=s.consumer_id WHERE c.owner_id=$1 AND s.start_date >= $2 AND s.start_date < $3`, oid, start.Format("2006-01-02"), start.AddDate(0, 1, 0).Format("2006-01-02")).Scan(&newConsumers); err != nil {
+    if err := a.db.QueryRow(`SELECT COUNT(*) FROM consumers c WHERE c.owner_id=$1 AND c.created_at >= $2 AND c.created_at < $3`, oid, start, start.AddDate(0, 1, 0)).Scan(&newConsumers); err != nil {
         errorJSON(w, 500, "could not calculate new consumers")
         return
     }
