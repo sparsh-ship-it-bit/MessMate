@@ -24,5 +24,7 @@ async function scanValue(value){status('scanStatus','Checking subscription and m
 $('manualBtn').onclick=()=>{const v=$('manualValue').value.trim();if(v)scanValue(v);else status('scanStatus','Enter a consumer ID or scan a QR.','error')};
 $('startBtn').onclick=async()=>{if(scanner){await scanner.stop().catch(()=>{});scanner=null;$('startBtn').textContent='Open camera scanner';return}if(!window.Html5Qrcode){status('scanStatus','Camera scanner could not load. Use the consumer ID field instead.','error');return}scanner=new Html5Qrcode('reader');try{await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:230,height:230}},async text=>{await scanner.stop().catch(()=>{});scanner=null;$('startBtn').textContent='Open camera scanner';scanValue(text)},()=>{});$('startBtn').textContent='Stop camera scanner'}catch(e){scanner=null;status('scanStatus','Camera permission unavailable. Allow camera access or enter the consumer ID manually.','error')}};
 $('disconnectBtn').onclick=async()=>{if(scanner)await scanner.stop().catch(()=>{});scanner=null;deviceToken='';localStorage.removeItem(tokenKey);$('result').classList.add('hidden');showPaired();status('pairStatus','Phone disconnected.')};
+async function heartbeat(){if(!deviceToken)return;try{await request('mobile/heartbeat',{method:'POST',body:'{}'})}catch(e){/* desktop status times out naturally when this phone stops checking in */}}
+heartbeat();setInterval(heartbeat,10000);
 showPaired();
 </script></body></html>
