@@ -30,5 +30,6 @@ function startHeartbeat(){if(heartbeatTimer)clearInterval(heartbeatTimer);heartb
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')heartbeat()});
 window.addEventListener('pagehide',()=>{if(heartbeatTimer)clearInterval(heartbeatTimer)});
 startHeartbeat();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/mobile-sw.js').catch(()=>{});
 showPaired();
 </script></body></html>
