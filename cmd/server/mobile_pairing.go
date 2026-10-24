@@ -78,11 +78,21 @@ func (a *App) mobileScanEvents(w http.ResponseWriter,r *http.Request) {
   var after int64
   if v:=r.URL.Query().Get("after");v!="" { if _,e:=fmt.Sscanf(v,"%d",&after);e!=nil {errorJSON(w,400,"invalid cursor");return} }
   var connected bool
-  if err:=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days')`,oid).Scan(&connected); err!=nil { errorJSON(w,500,"could not check mobile connection"); return }
+  if err:=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND last_seen_at>NOW()-INTERVAL '35 seconds')`,oid).Scan(&connected); err!=nil { errorJSON(w,500,"could not check mobile connection"); return }
   rows,err:=a.db.Query(`SELECT id,consumer_code,consumer_name,active,created_at FROM mobile_scan_events WHERE owner_id=$1 AND id>$2 ORDER BY id ASC LIMIT 30`,oid,after)
   if err!=nil { errorJSON(w,500,"could not fetch mobile scans"); return }
   defer rows.Close()
   events:=[]map[string]any{}
   for rows.Next(){var id int64;var code,name string;var active bool;var at time.Time;if rows.Scan(&id,&code,&name,&active,&at)==nil{events=append(events,map[string]any{"id":id,"consumer_id":code,"name":name,"active":active,"scanned_at":at})}}
   writeJSON(w,200,map[string]any{"events":events,"connected":connected})
+}
+
+func (a *App) mobileHeartbeat(w http.ResponseWriter, r *http.Request) {
+  token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+  if token == "" { errorJSON(w, 401, "device is not paired"); return }
+  result, err := a.db.Exec(`UPDATE mobile_pairings SET last_seen_at=NOW() WHERE device_token_hash=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days'`, hashPairSecret(token))
+  if err != nil { errorJSON(w, 500, "could not update phone connection"); return }
+  n, err := result.RowsAffected()
+  if err != nil || n == 0 { errorJSON(w, 401, "device pairing expired or disconnected; pair again from desktop"); return }
+  writeJSON(w, 200, map[string]any{"connected": true})
 }
