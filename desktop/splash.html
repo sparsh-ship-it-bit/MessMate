@@ -13,27 +13,39 @@
       place-items: center;
       overflow: hidden;
       background: #050505;
-      color: #f5f4ed;
+      color: #f5f5f0;
       font-family: "Segoe UI", Arial, sans-serif;
     }
-    .brand { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+    .brand {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 28px;
+    }
     .mark {
-      width: 112px;
-      height: 66px;
+      display: block;
+      width: min(224px, 64vw);
+      height: auto;
+      aspect-ratio: 256 / 128;
       opacity: 0;
-      transform: scale(.86);
-      animation: mark-in .36s cubic-bezier(.2,.8,.2,1) .04s forwards;
+      transform: translateY(5px);
+      animation: enter .4s ease-out .04s forwards;
     }
     .name {
-      font-size: 27px;
+      font-size: clamp(28px, 7vw, 36px);
+      line-height: 1.15;
       font-weight: 650;
-      letter-spacing: -.8px;
+      letter-spacing: -.9px;
+      white-space: nowrap;
       opacity: 0;
-      transform: translateY(6px);
-      animation: name-in .36s ease .24s forwards;
+      transform: translateY(5px);
+      animation: enter .4s ease-out .14s forwards;
     }
-    @keyframes mark-in { to { opacity: 1; transform: scale(1); } }
-    @keyframes name-in { to { opacity: 1; transform: translateY(0); } }
+    .name span { color: #39d353; }
+    @keyframes enter { to { opacity: 1; transform: translateY(0); } }
     @media (prefers-reduced-motion: reduce) {
       .mark, .name { animation-duration: .01ms; animation-delay: 0ms; }
     }
@@ -41,11 +53,17 @@
 </head>
 <body>
   <main class="brand" aria-label="MessMate starting">
-    <svg class="mark" viewBox="0 0 160 94" role="img" aria-label="MM logo" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 84V10H26L57 46L88 10H106V84H87V39L57 73L27 39V84Z" fill="#F5F4ED"/>
-      <path d="M70 84V10H88L119 46L150 10H152V84H133V39L119 55L88 84Z" fill="#B9D957"/>
+    <svg class="mark" viewBox="0 0 256 128" role="img" aria-label="Two distinct M letters" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b7ff43"/>
+          <stop offset="1" stop-color="#00b83f"/>
+        </linearGradient>
+      </defs>
+      <path d="M10 118V10H31L65 51L99 10H120V118H96V48L65 85L34 48V118Z" fill="#F5F5F0"/>
+      <path d="M136 118V10H157L191 51L225 10H246V118H222V48L191 85L160 48V118Z" fill="url(#green)"/>
     </svg>
-    <div class="name">MessMate</div>
+    <div class="name">Mess<span>Mate</span></div>
   </main>
 </body>
 </html>
