@@ -71,6 +71,7 @@ func main() {
     mux.HandleFunc("POST /api/v1/mobile/pairing", app.auth(app.createMobilePairing))
     mux.HandleFunc("POST /api/v1/mobile/pair", app.exchangeMobilePairing)
     mux.HandleFunc("POST /api/v1/mobile/scan", app.mobileScan)
+    mux.HandleFunc("POST /api/v1/mobile/heartbeat", app.mobileHeartbeat)
     mux.HandleFunc("GET /api/v1/mobile/scans", app.auth(app.mobileScanEvents))
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
