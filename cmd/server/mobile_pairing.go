@@ -78,7 +78,7 @@ func (a *App) mobileScanEvents(w http.ResponseWriter,r *http.Request) {
   var after int64
   if v:=r.URL.Query().Get("after");v!="" { if _,e:=fmt.Sscanf(v,"%d",&after);e!=nil {errorJSON(w,400,"invalid cursor");return} }
   var connected bool
-  if err:=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND last_seen_at>NOW()-INTERVAL '35 seconds')`,oid).Scan(&connected); err!=nil { errorJSON(w,500,"could not check mobile connection"); return }
+  if err:=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND last_seen_at>NOW()-INTERVAL '15 seconds')`,oid).Scan(&connected); err!=nil { errorJSON(w,500,"could not check mobile connection"); return }
   rows,err:=a.db.Query(`SELECT id,consumer_code,consumer_name,active,created_at FROM mobile_scan_events WHERE owner_id=$1 AND id>$2 ORDER BY id ASC LIMIT 30`,oid,after)
   if err!=nil { errorJSON(w,500,"could not fetch mobile scans"); return }
   defer rows.Close()
