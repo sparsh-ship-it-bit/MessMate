@@ -17,6 +17,7 @@ if (new URL(APP_URL).protocol !== 'https:') {
 let mainWindow;
 let splashWindow;
 let splashTimer;
+let startupReady = false;
 let updateCheckInProgress = false;
 
 function sendUpdateStatus(status) {
@@ -74,7 +75,7 @@ function createSplashWindow() {
 function createWindow() {
   createSplashWindow();
   // Keep the branded intro brief even if the hosted app takes longer to load.
-  splashTimer = setTimeout(closeSplashAndShowApp, 1500);
+  splashTimer = setTimeout(closeSplashAndShowApp, 30000);
 
   mainWindow = new BrowserWindow({
     width: 1360,
@@ -107,7 +108,11 @@ function createWindow() {
     }
   });
 
-  mainWindow.once('ready-to-show', closeSplashAndShowApp);
+  mainWindow.once('ready-to-show', () => {
+    // The renderer signals readiness after its initial dashboard data requests settle.
+    // Do not reveal a half-loaded dashboard just because the HTML has painted.
+    if (startupReady) closeSplashAndShowApp();
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
 }
@@ -120,6 +125,15 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('messmate:get-version', () => app.getVersion());
+  ipcMain.on('messmate:app-ready', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    startupReady = true;
+    if (mainWindow.webContents.isLoading()) {
+      mainWindow.webContents.once('did-finish-load', closeSplashAndShowApp);
+    } else {
+      closeSplashAndShowApp();
+    }
+  });
   ipcMain.handle('messmate:check-updates', async () => {
     if (!app.isPackaged) return { status: 'development', message: 'Updates are available in the installed desktop build.' };
     if (updateCheckInProgress) return { status: 'checking', message: 'Already checking for updates.' };
