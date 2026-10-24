@@ -14,7 +14,7 @@ import (
 
 type pairingCodeRequest struct{}
 type pairingExchangeRequest struct { Code string `json:"code"` }
-type mobileScanRequest struct { Value string `json:"value"` }
+type mobileScanRequest struct { Value string `json:"value"`; Meal string `json:"meal"` }
 
 func hashPairSecret(s string) string { h:=sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 func securePairSecret(n int) (string,error) { b:=make([]byte,n); if _,err:=rand.Read(b);err!=nil{return "",err}; return hex.EncodeToString(b),nil }
@@ -51,26 +51,38 @@ func (a *App) mobileScan(w http.ResponseWriter,r *http.Request) {
   var req mobileScanRequest
   if decode(r,&req)!=nil || strings.TrimSpace(req.Value)=="" { errorJSON(w,400,"scan a consumer QR code or enter a consumer ID"); return }
   value:=strings.TrimSpace(req.Value)
-  var id uuid.UUID
+  meal:=strings.ToLower(strings.TrimSpace(req.Meal))
+  if meal!="breakfast" && meal!="lunch" && meal!="dinner" { errorJSON(w,400,"select breakfast, lunch or dinner before scanning"); return }
+  var id,qrToken uuid.UUID
   var consumerID,name,phone,plan string
   var active bool
   // Accept the QR token used by MessMate consumer QR codes, or the human-readable consumer ID.
-  err=a.db.QueryRow(`SELECT id,consumer_id,name,phone,meal_plan,active FROM consumers WHERE owner_id=$1 AND (qr_token::text=$2 OR lower(consumer_id)=lower($2)) LIMIT 1`,owner,value).Scan(&id,&consumerID,&name,&phone,&plan,&active)
+  err=a.db.QueryRow(`SELECT id,qr_token,consumer_id,name,phone,meal_plan,active FROM consumers WHERE owner_id=$1 AND (qr_token::text=$2 OR lower(consumer_id)=lower($2)) LIMIT 1`,owner,value).Scan(&id,&qrToken,&consumerID,&name,&phone,&plan,&active)
   if err!=nil { errorJSON(w,404,"consumer not found in this MessMate account"); return }
+  if !active { errorJSON(w,403,"consumer is inactive"); return }
+  if plan!="all" && !containsMeal(plan,meal) { errorJSON(w,403,"consumer is not subscribed to this meal"); return }
+  var end time.Time
+  err=a.db.QueryRow(`SELECT end_date FROM subscriptions WHERE consumer_id=$1 ORDER BY end_date DESC LIMIT 1`,id).Scan(&end)
+  if err!=nil || dateBeforeInIndia(end,time.Now()) { errorJSON(w,403,"consumer subscription is not active"); return }
+  var attendanceID uuid.UUID
+  err=a.db.QueryRow(`INSERT INTO attendance(consumer_id,attendance_date,meal) VALUES($1,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,$2) ON CONFLICT(consumer_id,attendance_date,meal) DO NOTHING RETURNING id`,id,meal).Scan(&attendanceID)
+  if err!=nil { errorJSON(w,409,"attendance already marked for this meal today"); return }
   var scanID int64
   err=a.db.QueryRow(`INSERT INTO mobile_scan_events(owner_id,pairing_id,consumer_id,consumer_code,consumer_name,active) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,owner,pairing,id,consumerID,name,active).Scan(&scanID)
-  if err!=nil { errorJSON(w,500,"could not sync scan"); return }
-  writeJSON(w,200,map[string]any{"scan_id":scanID,"consumer_id":consumerID,"name":name,"phone":phone,"meal_plan":plan,"active":active,"message":"Consumer found and synced to desktop"})
+  if err!=nil { errorJSON(w,500,"attendance was marked but could not sync the scan to desktop"); return }
+  writeJSON(w,200,map[string]any{"scan_id":scanID,"attendance_id":attendanceID,"consumer_id":consumerID,"name":name,"phone":phone,"meal_plan":plan,"active":active,"meal":meal,"message":"Attendance marked and synced to desktop"})
 }
 
 func (a *App) mobileScanEvents(w http.ResponseWriter,r *http.Request) {
   oid,err:=ownerID(r); if err!=nil { errorJSON(w,401,"authentication required"); return }
   var after int64
   if v:=r.URL.Query().Get("after");v!="" { if _,e:=fmt.Sscanf(v,"%d",&after);e!=nil {errorJSON(w,400,"invalid cursor");return} }
+  var connected bool
+  if err:=a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days')`,oid).Scan(&connected); err!=nil { errorJSON(w,500,"could not check mobile connection"); return }
   rows,err:=a.db.Query(`SELECT id,consumer_code,consumer_name,active,created_at FROM mobile_scan_events WHERE owner_id=$1 AND id>$2 ORDER BY id ASC LIMIT 30`,oid,after)
   if err!=nil { errorJSON(w,500,"could not fetch mobile scans"); return }
   defer rows.Close()
   events:=[]map[string]any{}
   for rows.Next(){var id int64;var code,name string;var active bool;var at time.Time;if rows.Scan(&id,&code,&name,&active,&at)==nil{events=append(events,map[string]any{"id":id,"consumer_id":code,"name":name,"active":active,"scanned_at":at})}}
-  writeJSON(w,200,map[string]any{"events":events})
+  writeJSON(w,200,map[string]any{"events":events,"connected":connected})
 }
