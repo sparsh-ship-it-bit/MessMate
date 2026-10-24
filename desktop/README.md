@@ -2,9 +2,9 @@
 
 This Electron shell opens the hosted MessMate app in a dedicated Windows desktop window. The existing web app and API remain the source of truth, so customer data continues to be stored by the current backend.
 
-## Important: confirm the production URL
+## Production URL and startup screen
 
-The initial URL in `app-config.json` is `https://messmate.onrender.com`. Before building a customer installer, confirm that this is the actual public Render URL for the MessMate service. If the URL differs, update `app-config.json` and rebuild the installer.
+The desktop app loads `https://messmate-zhms.onrender.com`. A brief black startup screen animates the `MM` mark and then the full `MessMate` name. It normally yields to the app as soon as the hosted page is ready, and has a 1.5-second maximum so the intro does not linger.
 
 ## Local development
 
