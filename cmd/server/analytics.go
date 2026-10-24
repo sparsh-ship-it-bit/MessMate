@@ -32,20 +32,20 @@ func dateBeforeInIndia(date, now time.Time) bool {
 // A subscription becomes overdue when its coverage has ended, even if the
 // previous period was fully paid. This represents an overdue renewal.
 func displayedPaymentStatus(paid, amount float64, endDate, asOf time.Time) string {
-    // Payment status answers whether the subscription balance is settled.
-    // Expiration is a separate date-based status and must not turn a paid
-    // subscription back into "overdue".
+    // Status represents whether the consumer's subscription is current.
+    // Once the coverage end date has passed, renewal is overdue even if the
+    // previous subscription period was paid in full.
     if amount <= 0 {
         return "pending"
+    }
+    if !endDate.IsZero() && dateBeforeInIndia(endDate, asOf) {
+        return "overdue"
     }
     if paid >= amount {
         return "paid"
     }
     if paid > 0 {
         return "partial"
-    }
-    if !endDate.IsZero() && dateBeforeInIndia(endDate, asOf) {
-        return "overdue"
     }
     return "pending"
 }
