@@ -14,6 +14,8 @@ func runMigrations(db *sql.DB) error {
     if err != nil {
         return err
     }
-    _, err = db.Exec(string(schema))
+    if _, err = db.Exec(string(schema)); err != nil { return err }
+    // Safe additive migration for existing databases; keeps current consumer data intact.
+    _, err = db.Exec(`ALTER TABLE mobile_pairings ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`)
     return err
 }
