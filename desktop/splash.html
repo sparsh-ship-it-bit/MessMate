@@ -13,32 +13,24 @@
       place-items: center;
       overflow: hidden;
       background: #050505;
-      color: #f7f7f2;
+      color: #f5f4ed;
       font-family: "Segoe UI", Arial, sans-serif;
     }
     .brand { display: flex; flex-direction: column; align-items: center; gap: 15px; }
     .mark {
-      display: grid;
-      place-items: center;
-      width: 76px;
-      height: 76px;
-      border-radius: 22px;
-      background: #e8f36a;
-      color: #10110a;
-      font-size: 28px;
-      font-weight: 850;
-      letter-spacing: -3px;
+      width: 112px;
+      height: 66px;
       opacity: 0;
-      transform: scale(.78);
-      animation: mark-in .38s cubic-bezier(.2,.8,.2,1) .05s forwards;
+      transform: scale(.86);
+      animation: mark-in .36s cubic-bezier(.2,.8,.2,1) .04s forwards;
     }
     .name {
       font-size: 27px;
-      font-weight: 700;
+      font-weight: 650;
       letter-spacing: -.8px;
       opacity: 0;
-      transform: translateY(7px);
-      animation: name-in .42s ease .36s forwards;
+      transform: translateY(6px);
+      animation: name-in .36s ease .24s forwards;
     }
     @keyframes mark-in { to { opacity: 1; transform: scale(1); } }
     @keyframes name-in { to { opacity: 1; transform: translateY(0); } }
@@ -49,7 +41,10 @@
 </head>
 <body>
   <main class="brand" aria-label="MessMate starting">
-    <div class="mark" aria-hidden="true">MM</div>
+    <svg class="mark" viewBox="0 0 160 94" role="img" aria-label="MM logo" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 84V10H26L57 46L88 10H106V84H87V39L57 73L27 39V84Z" fill="#F5F4ED"/>
+      <path d="M70 84V10H88L119 46L150 10H152V84H133V39L119 55L88 84Z" fill="#B9D957"/>
+    </svg>
     <div class="name">MessMate</div>
   </main>
 </body>
