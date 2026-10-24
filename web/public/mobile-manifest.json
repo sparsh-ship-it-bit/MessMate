@@ -1,0 +1,11 @@
+{
+  "name": "MessMate Mobile Scanner",
+  "short_name": "MessMate Scan",
+  "description": "Pair your phone with MessMate desktop to scan consumer QR codes.",
+  "start_url": "/mobile-scan.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait"
+}
