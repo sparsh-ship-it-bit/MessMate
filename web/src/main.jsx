@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {Html5Qrcode} from 'html5-qrcode';
 import './styles.css';
 const API=import.meta.env.VITE_API_URL||'';const meals=['breakfast','lunch','dinner'];
-const today=()=>new Date().toISOString().slice(0,10);const currentMonth=()=>today().slice(0,7);
+const today=()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const part=type=>parts.find(p=>p.type===type)?.value||'';return `${part('year')}-${part('month')}-${part('day')}`};const currentMonth=()=>today().slice(0,7);
 const label=p=>p==='all'?'All meals':(p||'').split(',').filter(Boolean).map(x=>x[0].toUpperCase()+x.slice(1)).join(' + ');
 const money=n=>`₹${Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2})}`;
 const statusText=s=>({paid:'Paid',partial:'Partially Paid',pending:'Pending',overdue:'Overdue'}[s]||s||'Pending');
