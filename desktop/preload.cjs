@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('messMateDesktop', {
   getVersion: () => ipcRenderer.invoke('messmate:get-version'),
+  signalAppReady: () => ipcRenderer.send('messmate:app-ready'),
   checkForUpdates: () => ipcRenderer.invoke('messmate:check-updates'),
   onUpdateStatus: (callback) => {
     if (typeof callback !== 'function') return () => {};
