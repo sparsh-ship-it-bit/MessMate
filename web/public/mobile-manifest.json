@@ -1,11 +1,24 @@
 {
-  "name": "MessMate Mobile Scanner",
-  "short_name": "MessMate Scan",
-  "description": "Pair your phone with MessMate desktop to scan consumer QR codes.",
+  "id": "/mobile-scan.html",
+  "name": "MessMate Mobile",
+  "short_name": "MessMate",
+  "description": "Mess management attendance scanner",
   "start_url": "/mobile-scan.html",
   "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#050505",
-  "theme_color": "#050505",
-  "orientation": "portrait"
+  "theme_color": "#c6ff00",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/mobile-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
