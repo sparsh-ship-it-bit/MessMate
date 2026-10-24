@@ -15,6 +15,8 @@ if (new URL(APP_URL).protocol !== 'https:') {
 }
 
 let mainWindow;
+let splashWindow;
+let splashTimer;
 let updateCheckInProgress = false;
 
 function sendUpdateStatus(status) {
@@ -31,7 +33,49 @@ function isTrustedUrl(rawUrl) {
   }
 }
 
+function closeSplashAndShowApp() {
+  if (splashTimer) {
+    clearTimeout(splashTimer);
+    splashTimer = null;
+  }
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  splashWindow = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+  }
+}
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 300,
+    frame: false,
+    resizable: false,
+    movable: false,
+    show: false,
+    center: true,
+    backgroundColor: '#050505',
+    alwaysOnTop: true,
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  splashWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+}
+
 function createWindow() {
+  createSplashWindow();
+  // Keep the branded intro brief even if the hosted app takes longer to load.
+  splashTimer = setTimeout(closeSplashAndShowApp, 1500);
+
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 900,
@@ -63,7 +107,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', closeSplashAndShowApp);
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
 }
