@@ -22,7 +22,7 @@
     "productName": "MessMate",
     "asar": true,
     "directories": { "output": "dist" },
-    "files": ["main.cjs", "preload.cjs", "app-config.json", "package.json", "node_modules/**/*"],
+    "files": ["main.cjs", "preload.cjs", "app-config.json", "package.json"],
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "artifactName": "MessMate-Setup-${version}.${ext}"
