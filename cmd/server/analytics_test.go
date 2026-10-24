@@ -29,8 +29,9 @@ func TestDisplayedPaymentStatusUsesIndiaDate(t *testing.T) {
         want string
     }{
         {"paid before expiry day ends in India", 100, 100, time.Date(2026, time.October, 22, 18, 0, 0, 0, time.UTC), "paid"},
-        {"overdue exactly at midnight in India", 100, 100, time.Date(2026, time.October, 22, 18, 30, 0, 0, time.UTC), "overdue"},
-		{"overdue after expiry day ends in India", 100, 100, time.Date(2026, time.October, 22, 19, 0, 0, 0, time.UTC), "overdue"},
+        {"fully paid at midnight after expiry day ends in India", 100, 100, time.Date(2026, time.October, 22, 18, 30, 0, 0, time.UTC), "paid"},
+		{"fully paid after expiry day ends in India", 100, 100, time.Date(2026, time.October, 22, 19, 0, 0, 0, time.UTC), "paid"},
+        {"unpaid after expiry day ends in India", 0, 100, time.Date(2026, time.October, 22, 19, 0, 0, 0, time.UTC), "overdue"},
         {"partial payment before expiry", 40, 100, time.Date(2026, time.October, 20, 12, 0, 0, 0, time.UTC), "partial"},
         {"pending before expiry", 0, 100, time.Date(2026, time.October, 20, 12, 0, 0, 0, time.UTC), "pending"},
     }
