@@ -1,6 +1,6 @@
 {
   "name": "messmate-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MessMate Windows desktop app",
   "private": true,
   "main": "main.cjs",
@@ -21,10 +21,25 @@
     "appId": "com.messmate.desktop",
     "productName": "MessMate",
     "asar": true,
-    "directories": { "output": "dist" },
-    "files": ["main.cjs", "preload.cjs", "app-config.json", "package.json"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "app-config.json",
+      "splash.html",
+      "package.json"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "MessMate-Setup-${version}.${ext}"
     },
     "nsis": {
@@ -35,11 +50,13 @@
       "createStartMenuShortcut": true,
       "shortcutName": "MessMate"
     },
-    "publish": [{
-      "provider": "github",
-      "owner": "sparsh-ship-it-bit",
-      "repo": "MessMate",
-      "releaseType": "release"
-    }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sparsh-ship-it-bit",
+        "repo": "MessMate",
+        "releaseType": "release"
+      }
+    ]
   }
 }
