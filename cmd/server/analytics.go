@@ -81,8 +81,8 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
     rows, err := a.db.Query(`SELECT DISTINCT ON (s.consumer_id) s.amount,s.amount_paid,s.end_date
         FROM subscriptions s
         JOIN consumers c ON c.id=s.consumer_id
-        WHERE c.owner_id=$1 AND s.start_date <= $2
-        ORDER BY s.consumer_id,s.end_date DESC,s.created_at DESC`, oid,asOf.Format("2006-01-02"))
+        WHERE c.owner_id=$1
+        ORDER BY s.consumer_id,s.end_date DESC,s.created_at DESC`, oid)
     if err != nil { log.Printf("analytics subscription status query failed: %v", err); errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
