@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>MessMate</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #050505;
+      color: #f7f7f2;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    .brand { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 76px;
+      height: 76px;
+      border-radius: 22px;
+      background: #e8f36a;
+      color: #10110a;
+      font-size: 28px;
+      font-weight: 850;
+      letter-spacing: -3px;
+      opacity: 0;
+      transform: scale(.78);
+      animation: mark-in .38s cubic-bezier(.2,.8,.2,1) .05s forwards;
+    }
+    .name {
+      font-size: 27px;
+      font-weight: 700;
+      letter-spacing: -.8px;
+      opacity: 0;
+      transform: translateY(7px);
+      animation: name-in .42s ease .36s forwards;
+    }
+    @keyframes mark-in { to { opacity: 1; transform: scale(1); } }
+    @keyframes name-in { to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) {
+      .mark, .name { animation-duration: .01ms; animation-delay: 0ms; }
+    }
+  </style>
+</head>
+<body>
+  <main class="brand" aria-label="MessMate starting">
+    <div class="mark" aria-hidden="true">MM</div>
+    <div class="name">MessMate</div>
+  </main>
+</body>
+</html>
