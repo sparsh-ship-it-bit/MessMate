@@ -30,7 +30,7 @@ type authRequest struct { Name string `json:"name"`; Email string `json:"email"`
 type loginRequest struct { Email string `json:"email"`; Password string `json:"password"` }
 type consumerRequest struct { Name string `json:"name"`; Phone string `json:"phone"`; ConsumerID string `json:"consumer_id"`; MealPlan string `json:"meal_plan"`; StartDate string `json:"start_date"`; EndDate string `json:"end_date"`; Amount float64 `json:"amount"`; AmountPaid float64 `json:"amount_paid"` }
 type subscriptionRequest struct { ConsumerID string `json:"consumer_id"`; StartDate string `json:"start_date"`; EndDate string `json:"end_date"`; Amount float64 `json:"amount"`; AmountPaid float64 `json:"amount_paid"`; MonthLabel string `json:"month_label"`; PaymentStatus string `json:"payment_status"` }
-type paymentRequest struct { ConsumerID string `json:"consumer_id"`; SubscriptionID string `json:"subscription_id"`; Amount float64 `json:"amount"`; Method string `json:"method"`; Reference string `json:"reference"` }
+type paymentRequest struct { ConsumerID string `json:"consumer_id"`; SubscriptionID string `json:"subscription_id"`; Amount float64 `json:"amount"`; Method string `json:"method"`; Reference string `json:"reference"`; PaidAt string `json:"paid_at"` }
 type attendanceRequest struct { QRToken string `json:"qr_token"`; Meal string `json:"meal"` }
 
 func main() {
@@ -315,6 +315,17 @@ func (a *App) createPayment(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // Allow backdating a payment to the date the money was actually received.
+    paidAt := time.Now().In(indiaLocation)
+    if req.PaidAt != "" {
+        parsed, parseErr := time.ParseInLocation("2006-01-02", req.PaidAt, indiaLocation)
+        if parseErr != nil {
+            errorJSON(w, http.StatusBadRequest, "paid_at must use YYYY-MM-DD format")
+            return
+        }
+        paidAt = parsed
+    }
+
     tx, err := a.db.Begin()
     if err != nil {
         errorJSON(w, http.StatusInternalServerError, "could not start payment")
@@ -355,8 +366,8 @@ func (a *App) createPayment(w http.ResponseWriter, r *http.Request) {
     }
 
     var pid uuid.UUID
-    if err = tx.QueryRow(`INSERT INTO payments(consumer_id,subscription_id,amount,method,reference)
-        VALUES($1,$2,$3,$4,$5) RETURNING id`, cid, sid, req.Amount, req.Method, req.Reference).Scan(&pid); err != nil {
+    if err = tx.QueryRow(`INSERT INTO payments(consumer_id,subscription_id,amount,method,reference,paid_at)
+        VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, cid, sid, req.Amount, req.Method, req.Reference, paidAt).Scan(&pid); err != nil {
         log.Printf("createPayment insert failed: %v", err)
         errorJSON(w, http.StatusInternalServerError, "payment failed")
         return
