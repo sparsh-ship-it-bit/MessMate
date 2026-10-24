@@ -102,3 +102,29 @@ CREATE TABLE IF NOT EXISTS payment_intents (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_intents_provider_payment ON payment_intents(provider_payment_id) WHERE provider_payment_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_intents_owner ON payment_intents(owner_id);
 CREATE INDEX IF NOT EXISTS idx_payment_intents_qr ON payment_intents(provider_qr_id);
+
+
+-- Secure pairing between an authenticated MessMate desktop and a phone companion.
+CREATE TABLE IF NOT EXISTS mobile_pairings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE CASCADE,
+    code_hash TEXT UNIQUE,
+    device_token_hash TEXT UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    paired_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mobile_pairings_owner ON mobile_pairings(owner_id);
+
+CREATE TABLE IF NOT EXISTS mobile_scan_events (
+    id BIGSERIAL PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE CASCADE,
+    pairing_id UUID NOT NULL REFERENCES mobile_pairings(id) ON DELETE CASCADE,
+    consumer_id UUID NOT NULL REFERENCES consumers(id) ON DELETE CASCADE,
+    consumer_code VARCHAR(50) NOT NULL,
+    consumer_name VARCHAR(120) NOT NULL,
+    active BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mobile_scan_events_owner_id ON mobile_scan_events(owner_id, id);
