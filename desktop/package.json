@@ -7,15 +7,18 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check main.cjs && node --check preload.cjs",
-    "dist:win": "electron-builder --win nsis --publish never",
-    "release:win": "electron-builder --win nsis --publish always"
+    "dist:win": "npm run build:icon && electron-builder --win nsis --publish never",
+    "release:win": "npm run build:icon && electron-builder --win nsis --publish always",
+    "build:icon": "node generate-icon.cjs"
   },
   "dependencies": {
     "electron-updater": "6.6.2"
   },
   "devDependencies": {
     "electron": "37.2.6",
-    "electron-builder": "26.0.12"
+    "electron-builder": "26.0.12",
+    "sharp": "0.34.3",
+    "png-to-ico": "2.1.8"
   },
   "build": {
     "appId": "com.messmate.desktop",
@@ -29,7 +32,10 @@
       "preload.cjs",
       "app-config.json",
       "splash.html",
-      "package.json"
+      "package.json",
+      "generate-icon.cjs",
+      "assets/messmate.svg",
+      "assets/messmate.ico"
     ],
     "win": {
       "target": [
@@ -40,7 +46,8 @@
           ]
         }
       ],
-      "artifactName": "MessMate-Setup-${version}.${ext}"
+      "artifactName": "MessMate-Setup-${version}.${ext}",
+      "icon": "assets/messmate.ico"
     },
     "nsis": {
       "oneClick": false,
