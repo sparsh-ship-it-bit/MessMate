@@ -82,7 +82,7 @@ func (a *App) monthlyAnalytics(w http.ResponseWriter, r *http.Request) {
         FROM subscriptions s
         JOIN consumers c ON c.id=s.consumer_id
         WHERE c.owner_id=$1 AND s.start_date <= $2
-        ORDER BY s.consumer_id,s.start_date DESC,s.end_date DESC`, oid,asOf.Format("2006-01-02"))
+        ORDER BY s.consumer_id,s.end_date DESC,s.created_at DESC`, oid,asOf.Format("2006-01-02"))
     if err != nil { log.Printf("analytics subscription status query failed: %v", err); errorJSON(w,500,"database error"); return }
     defer rows.Close()
     paidCount,partialCount,pendingCount,overdueCount:=0,0,0,0
