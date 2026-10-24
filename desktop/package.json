@@ -1,0 +1,45 @@
+{
+  "name": "messmate-desktop",
+  "version": "1.0.0",
+  "description": "MessMate Windows desktop app",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.cjs && node --check preload.cjs",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "release:win": "electron-builder --win nsis --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
+  },
+  "devDependencies": {
+    "electron": "37.2.6",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.messmate.desktop",
+    "productName": "MessMate",
+    "asar": true,
+    "directories": { "output": "dist" },
+    "files": ["main.cjs", "preload.cjs", "app-config.json", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "MessMate-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MessMate"
+    },
+    "publish": [{
+      "provider": "github",
+      "owner": "sparsh-ship-it-bit",
+      "repo": "MessMate",
+      "releaseType": "release"
+    }]
+  }
+}
