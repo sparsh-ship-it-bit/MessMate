@@ -2,22 +2,35 @@ package com.messmate.mobile
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var pendingWebPermission: PermissionRequest? = null
+    private var checkingUpdate = false
 
     private val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -25,16 +38,34 @@ class MainActivity : AppCompatActivity() {
             pendingWebPermission = null
             if (granted && request != null && isTrustedOrigin(request.origin)) {
                 request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
-            } else {
-                request?.deny()
-            }
+            } else request?.deny()
         }
+
+    private val updateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            val prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE)
+            if (id < 0 || id != prefs.getLong(PENDING_DOWNLOAD_ID, -2L)) return
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                if (!cursor.moveToFirst()) return
+                if (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
+                    prefs.edit().remove(PENDING_DOWNLOAD_ID).apply()
+                    Toast.makeText(this@MainActivity, "MessMate update download failed. Please try again.", Toast.LENGTH_LONG).show()
+                    return
+                }
+            }
+            installDownloadedUpdate(id)
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(5, 5, 5)
         window.navigationBarColor = android.graphics.Color.rgb(5, 5, 5)
+        ContextCompat.registerReceiver(this, updateReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         webView = WebView(this)
         webView.settings.javaScriptEnabled = true
@@ -44,22 +75,16 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val uri = request.url
-                return !isTrustedUrl(uri)
-            }
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !isTrustedUrl(request.url)
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
                 runOnUiThread {
-                    if (!isTrustedOrigin(request.origin) ||
-                        request.resources.none { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }) {
+                    if (!isTrustedOrigin(request.origin) || request.resources.none { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }) {
                         request.deny()
                         return@runOnUiThread
                     }
-                    if (ContextCompat.checkSelfPermission(
-                            this@MainActivity, Manifest.permission.CAMERA
-                        ) == PackageManager.PERMISSION_GRANTED) {
+                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                         request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
                     } else {
                         pendingWebPermission = request
@@ -69,18 +94,115 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setContentView(webView)
-        if (savedInstanceState == null) {
-            webView.loadUrl(APP_URL)
-        } else {
-            webView.restoreState(savedInstanceState)
+        if (savedInstanceState == null) webView.loadUrl(APP_URL) else webView.restoreState(savedInstanceState)
+        checkForUpdate()
+    }
+
+    private fun checkForUpdate() {
+        if (checkingUpdate) return
+        checkingUpdate = true
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 7000
+                    readTimeout = 7000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "MessMate-Android")
+                }
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@Thread
+                val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@Thread
+                val latest = release.optString("tag_name").removePrefix("v")
+                if (compareVersions(latest, BuildConfig.VERSION_NAME) <= 0) return@Thread
+                val assets = release.optJSONArray("assets") ?: return@Thread
+                var apkUrl = ""
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    if (asset.optString("name") == APK_ASSET_NAME) {
+                        apkUrl = asset.optString("browser_download_url")
+                        break
+                    }
+                }
+                if (!apkUrl.startsWith("https://github.com/")) return@Thread
+                runOnUiThread { showUpdateDialog(latest, apkUrl) }
+            } catch (_: Exception) {
+                // Keep the app usable when the update service is unavailable.
+            } finally {
+                connection?.disconnect()
+                runOnUiThread { checkingUpdate = false }
+            }
+        }.start()
+    }
+
+    private fun compareVersions(a: String, b: String): Int {
+        val left = a.split(".").map { it.toIntOrNull() ?: 0 }
+        val right = b.split(".").map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(left.size, right.size)) {
+            val difference = left.getOrElse(i) { 0 }.compareTo(right.getOrElse(i) { 0 })
+            if (difference != 0) return difference
+        }
+        return 0
+    }
+
+    private fun showUpdateDialog(version: String, apkUrl: String) {
+        if (isFinishing) return
+        AlertDialog.Builder(this)
+            .setTitle("MessMate update available")
+            .setMessage("Version $version is ready. Download the update now?")
+            .setNegativeButton("Later", null)
+            .setPositiveButton("Update") { _, _ -> downloadUpdate(version, apkUrl) }
+            .show()
+    }
+
+    private fun downloadUpdate(version: String, apkUrl: String) {
+        try {
+            val request = DownloadManager.Request(Uri.parse(apkUrl))
+                .setTitle("MessMate $version update")
+                .setDescription("Downloading the latest MessMate app")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+            val id = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+            getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).edit().putLong(PENDING_DOWNLOAD_ID, id).apply()
+            Toast.makeText(this, "Update downloading. Android will ask you to install it when ready.", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Could not start the update download.", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun isTrustedOrigin(uri: Uri): Boolean =
-        uri.scheme == "https" && uri.host == TRUSTED_HOST
+    private fun installDownloadedUpdate(id: Long) {
+        val uri = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).getUriForDownloadedFile(id)
+        if (uri == null) {
+            Toast.makeText(this, "Update file could not be opened.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            AlertDialog.Builder(this)
+                .setTitle("Allow MessMate update")
+                .setMessage("Allow installs from this app in Android settings, then return to MessMate to finish updating.")
+                .setNegativeButton("Later", null)
+                .setPositiveButton("Settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                }
+                .show()
+            return
+        }
+        val install = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(install)
+            getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).edit().remove(PENDING_DOWNLOAD_ID).apply()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Android could not open the installer.", Toast.LENGTH_LONG).show()
+        }
+    }
 
-    private fun isTrustedUrl(uri: Uri): Boolean =
-        isTrustedOrigin(uri) || uri.scheme == "about"
+    private fun isTrustedOrigin(uri: Uri): Boolean = uri.scheme == "https" && uri.host == TRUSTED_HOST
+    private fun isTrustedUrl(uri: Uri): Boolean = isTrustedOrigin(uri) || uri.scheme == "about"
 
     override fun onSaveInstanceState(outState: Bundle) {
         webView.saveState(outState)
@@ -90,14 +212,16 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::webView.isInitialized && webView.url?.startsWith(APP_URL) == true) webView.reload()
+        val pending = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getLong(PENDING_DOWNLOAD_ID, -1L)
+        if (pending >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.canRequestPackageInstalls()) installDownloadedUpdate(pending)
     }
 
     override fun onBackPressed() {
-        if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
-        else super.onBackPressed()
+        if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(updateReceiver) } catch (_: Exception) { }
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.destroy()
@@ -108,5 +232,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TRUSTED_HOST = "messmate-zhms.onrender.com"
         private const val APP_URL = "https://messmate-zhms.onrender.com/mobile-scan.html"
+        private const val LATEST_RELEASE_API = "https://api.github.com/repos/sparsh-ship-it-bit/MessMate/releases/latest"
+        private const val APK_ASSET_NAME = "MessMate-Android.apk"
+        private const val UPDATE_PREFS = "messmate_updates"
+        private const val PENDING_DOWNLOAD_ID = "pending_download_id"
     }
 }
