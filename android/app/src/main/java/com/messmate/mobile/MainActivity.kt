@@ -92,7 +92,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (isTrustedUrl(Uri.parse(url)) && ::splashOverlay.isInitialized) {
+                if (isTrustedOrigin(Uri.parse(url)) && ::splashOverlay.isInitialized && splashOverlay.visibility == View.VISIBLE) {
                     splashOverlay.animate().alpha(0f).setDuration(180).withEndAction {
                         splashOverlay.visibility = View.GONE
                     }.start()
