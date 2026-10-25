@@ -28,9 +28,9 @@ import (
 
 // registerWeb serves the compiled React application from the same origin as the API.
 // Renewal is handled here because the standalone renewal UI calls these endpoints directly.
-func registerWeb(mux *http.ServeMux) {
-    mux.HandleFunc("POST /api/v1/auth/forgot-password", requestPasswordReset)
-    mux.HandleFunc("POST /api/v1/auth/reset-password", completePasswordReset)
+func registerWeb(mux *http.ServeMux, db *sql.DB) {
+    mux.HandleFunc("POST /api/v1/auth/forgot-password", func(w http.ResponseWriter, r *http.Request) { requestPasswordReset(db, w, r) })
+    mux.HandleFunc("POST /api/v1/auth/reset-password", func(w http.ResponseWriter, r *http.Request) { completePasswordReset(db, w, r) })
     mux.HandleFunc("GET /api/v1/subscriptions/renew-info/{id}", renewalInfo)
     mux.HandleFunc("POST /api/v1/subscriptions/renew", renewSubscription)
     mux.HandleFunc("POST /api/v1/feedback", submitFeedback)
@@ -388,7 +388,7 @@ func absFloat(v float64)float64{if v<0{return -v};return v}
 
 type passwordResetRequest struct { Email string `json:"email"`; Token string `json:"token"`; Password string `json:"password"` }
 
-func requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+func requestPasswordReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
     r.Body = http.MaxBytesReader(w, r.Body, 8*1024)
     var req passwordResetRequest
     if decode(r, &req) != nil || strings.TrimSpace(req.Email) == "" || !strings.Contains(req.Email, "@") {
@@ -398,7 +398,7 @@ func requestPasswordReset(w http.ResponseWriter, r *http.Request) {
     generic := map[string]string{"message":"If an account exists for this email, password reset instructions will be sent."}
     // Do not reveal whether an email belongs to an account.
     var ownerID string
-    err := resetDBQueryRow(r.Context(), strings.ToLower(strings.TrimSpace(req.Email))).Scan(&ownerID)
+    err := db.QueryRow("SELECT id::text FROM owners WHERE lower(email)=$1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&ownerID)
     if err == sql.ErrNoRows { writeJSON(w, 200, generic); return }
     if err != nil { log.Printf("password reset lookup failed: %v", err); errorJSON(w, 500, "could not process reset request"); return }
     host, port := strings.TrimSpace(os.Getenv("SMTP_HOST")), getenv("SMTP_PORT", "587")
@@ -414,7 +414,7 @@ func requestPasswordReset(w http.ResponseWriter, r *http.Request) {
     digest := sha256.Sum256([]byte(token))
     tokenHash := hex.EncodeToString(digest[:])
     // Use the shared application database; only a hash of the bearer token is stored.
-    if err := savePasswordResetToken(ownerID, tokenHash, time.Now().Add(30*time.Minute)); err != nil {
+    if err := savePasswordResetToken(db, ownerID, tokenHash, time.Now().Add(30*time.Minute)); err != nil {
         log.Printf("password reset token save failed: %v", err); errorJSON(w, 500, "could not create reset link"); return
     }
     baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_BASE_URL")), "/")
@@ -431,18 +431,13 @@ func requestPasswordReset(w http.ResponseWriter, r *http.Request) {
     writeJSON(w, 200, generic)
 }
 
-var passwordResetDB *sql.DB
-
-func resetDBQueryRow(ctx context.Context, email string) *sql.Row {
-    return passwordResetDB.QueryRowContext(ctx, "SELECT id::text FROM owners WHERE lower(email)=$1", email)
-}
-func savePasswordResetToken(ownerID, tokenHash string, expires time.Time) error {
-    _, err := passwordResetDB.Exec("UPDATE password_reset_tokens SET used_at=NOW() WHERE owner_id=$1 AND used_at IS NULL", ownerID)
+func savePasswordResetToken(db *sql.DB, ownerID, tokenHash string, expires time.Time) error {
+    _, err := db.Exec("UPDATE password_reset_tokens SET used_at=NOW() WHERE owner_id=$1 AND used_at IS NULL", ownerID)
     if err != nil { return err }
-    _, err = passwordResetDB.Exec("INSERT INTO password_reset_tokens(token_hash,owner_id,expires_at) VALUES($1,$2,$3)", tokenHash, ownerID, expires)
+    _, err = db.Exec("INSERT INTO password_reset_tokens(token_hash,owner_id,expires_at) VALUES($1,$2,$3)", tokenHash, ownerID, expires)
     return err
 }
-func completePasswordReset(w http.ResponseWriter, r *http.Request) {
+func completePasswordReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
     r.Body = http.MaxBytesReader(w, r.Body, 8*1024)
     var req passwordResetRequest
     if decode(r, &req) != nil || strings.TrimSpace(req.Token)=="" || len(req.Password)<8 {
@@ -452,11 +447,11 @@ func completePasswordReset(w http.ResponseWriter, r *http.Request) {
     digest := sha256.Sum256([]byte(req.Token))
     tokenHash := hex.EncodeToString(digest[:])
     var ownerID string
-    err := passwordResetDB.QueryRow("SELECT owner_id::text FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW()", tokenHash).Scan(&ownerID)
+    err := db.QueryRow("SELECT owner_id::text FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW()", tokenHash).Scan(&ownerID)
     if err != nil { errorJSON(w, 400, "This reset link is invalid or expired. Request a new one."); return }
     hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
     if err != nil { errorJSON(w, 500, "could not update password"); return }
-    tx, err := passwordResetDB.Begin()
+    tx, err := db.Begin()
     if err != nil { errorJSON(w, 500, "could not update password"); return }
     defer tx.Rollback()
     res, err := tx.Exec("UPDATE password_reset_tokens SET used_at=NOW() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW()", tokenHash)
