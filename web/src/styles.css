@@ -572,3 +572,10 @@ html {
 .sidebar-feedback{width:100%;margin:0 0 10px;text-align:left;justify-content:flex-start}
 .modal textarea{width:100%;min-height:130px;resize:vertical;padding:12px 14px;border-radius:12px;border:1px solid var(--line,#29352b);background:var(--surface,#101610);color:var(--text,#f4f7f2);font:inherit;line-height:1.5}
 .modal textarea:focus{outline:1px solid var(--green,#c6ff00);border-color:var(--green,#c6ff00)}
+
+
+/* Feedback button: readable text and evenly spaced sidebar footer controls */
+.sidebar-feedback{display:flex;align-items:center;gap:8px;min-height:42px;padding:11px 12px;margin:0 0 10px;font-size:14px;line-height:1.25;font-weight:700;text-align:left;justify-content:flex-start;white-space:normal}
+.app aside .sidebar-phone{margin-top:auto;margin-bottom:10px}
+.app aside .logout{margin-top:0}
+@media(max-width:650px){.app aside .sidebar-phone{margin-top:12px;margin-bottom:10px}.sidebar-feedback{margin-bottom:10px;font-size:14px}}
