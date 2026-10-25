@@ -477,3 +477,16 @@ html {
     outline: none;
   }
 }
+
+
+/* Fix the inner outline around the Active metric only; preserve the card shell. */
+.content .summary-metric.active {
+  border-left: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+.content .summary-metric.active:hover {
+  border-left: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
