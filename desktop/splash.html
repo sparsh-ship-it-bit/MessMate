@@ -25,23 +25,41 @@
       gap: 17px;
       padding: 28px;
     }
-    .app-icon {
-      width: 112px;
+    .intro {
       height: 112px;
-      filter: drop-shadow(0 0 26px rgba(198,255,0,.14));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      animation: intro-exit .5s ease-in 1.05s forwards;
+    }
+    .intro span {
+      display: block;
+      font-size: 92px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -9px;
       opacity: 0;
-      transform: scale(.92) translateY(6px);
-      animation: reveal .48s cubic-bezier(.2,.8,.2,1) .04s forwards;
+      text-shadow: 0 0 28px rgba(198,255,0,.12);
+    }
+    .intro .m-one {
+      color: #f5f5f0;
+      animation: m-left .7s cubic-bezier(.2,.8,.2,1) .08s forwards;
+    }
+    .intro .m-two {
+      color: #c6ff00;
+      animation: m-right .7s cubic-bezier(.2,.8,.2,1) .08s forwards;
     }
     .name {
+      margin-top: -129px;
       font-size: 34px;
       line-height: 1.15;
       font-weight: 700;
       letter-spacing: -.9px;
       white-space: nowrap;
       opacity: 0;
-      transform: translateY(6px);
-      animation: reveal .42s ease-out .16s forwards;
+      transform: translateY(5px) scale(.97);
+      animation: name-reveal .52s cubic-bezier(.2,.8,.2,1) 1.28s forwards;
     }
     .name span { color: #c6ff00; }
     .tagline {
@@ -52,7 +70,7 @@
       letter-spacing: 3.1px;
       text-transform: uppercase;
       opacity: 0;
-      animation: fade-in .4s ease-out .28s forwards;
+      animation: fade-in .4s ease-out 1.58s forwards;
     }
     .loader {
       display: flex;
@@ -65,24 +83,42 @@
       border-radius: 50%;
       background: #c6ff00;
       opacity: .25;
-      animation: pulse 1s ease-in-out infinite;
+      animation: wave 1s ease-in-out 1.9s infinite;
     }
-    .loader span:nth-child(2) { animation-delay: .15s; }
-    .loader span:nth-child(3) { animation-delay: .3s; }
-    @keyframes reveal { to { opacity: 1; transform: scale(1) translateY(0); } }
+    .loader span:nth-child(2) { animation-delay: 2.05s; }
+    .loader span:nth-child(3) { animation-delay: 2.2s; }
+    @keyframes m-left {
+      0% { opacity: 0; transform: translateX(-34px) scale(.8); }
+      65% { opacity: 1; transform: translateX(5px) scale(1.04); }
+      100% { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    @keyframes m-right {
+      0% { opacity: 0; transform: translateX(34px) scale(.8); }
+      65% { opacity: 1; transform: translateX(-5px) scale(1.04); }
+      100% { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    @keyframes intro-exit {
+      to { opacity: 0; transform: translateY(-5px) scale(.88); visibility: hidden; }
+    }
+    @keyframes name-reveal {
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     @keyframes fade-in { to { opacity: 1; } }
-    @keyframes pulse { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.15); } }
+    @keyframes wave {
+      0%, 60%, 100% { opacity: .25; transform: translateY(0) scale(.8); }
+      30% { opacity: 1; transform: translateY(-5px) scale(1.2); }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .app-icon, .name, .tagline, .loader span { animation-duration: .01ms; animation-delay: 0ms; }
+      .intro, .intro span, .name, .tagline, .loader span {
+        animation-duration: .01ms;
+        animation-delay: 0ms;
+      }
     }
   </style>
 </head>
 <body>
   <main class="brand" aria-label="MessMate starting">
-    <svg class="app-icon" viewBox="0 0 512 512" role="img" aria-label="MessMate app icon" xmlns="http://www.w3.org/2000/svg">
-      <rect width="512" height="512" rx="104" fill="#c6ff00"/>
-      <path d="M92 370V142L256 284L420 142V370" fill="none" stroke="#050805" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
+    <div class="intro" aria-hidden="true"><span class="m-one">M</span><span class="m-two">M</span></div>
     <div class="name">Mess<span>Mate</span></div>
     <div class="tagline">Mess management, simplified</div>
     <div class="loader" role="status" aria-label="Loading"><span></span><span></span><span></span></div>
