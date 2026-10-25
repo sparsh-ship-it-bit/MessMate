@@ -4,21 +4,10 @@
     android:height="512dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <!-- Dark rounded tile with a subtle green-grey outline -->
-    <path
-        android:fillColor="#0B160D"
-        android:pathData="M128,16H384A112,112 0,0 1,496 128V384A112,112 0,0 1,384 496H128A112,112 0,0 1,16 384V128A112,112 0,0 1,128 16Z" />
-    <path
-        android:strokeColor="#344437"
-        android:strokeWidth="8"
-        android:fillColor="#00000000"
-        android:pathData="M128,20H384A108,108 0,0 1,492 128V384A108,108 0,0 1,384 492H128A108,108 0,0 1,20 384V128A108,108 0,0 1,128 20Z" />
-    <!-- White upper M -->
-    <path
-        android:fillColor="#F5F7F3"
-        android:pathData="M126,238V98H158L256,198L354,98H386V238H350V151L256,246L162,151V238Z" />
-    <!-- Neon-lime lower M -->
     <path
         android:fillColor="#C6FF00"
-        android:pathData="M126,414V274H158L256,374L354,274H386V414H350V327L256,422L162,327V414Z" />
+        android:pathData="M112,16H400A96,96 0,0 1,496 112V400A96,96 0,0 1,400 496H112A96,96 0,0 1,16 400V112A96,96 0,0 1,112 16Z" />
+    <path
+        android:fillColor="#080B07"
+        android:pathData="M90,372V140H143L256,258L369,140H422V372H360V239L256,348L152,239V372Z" />
 </vector>
