@@ -365,3 +365,55 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .panel.glass-panel, .hero-stat { transition: none !important; }
 }
+
+
+/* Global tile interaction across every MessMate tab */
+@media (hover: hover) and (pointer: fine) {
+  .panel,
+  .glass-panel,
+  .auth-card,
+  .hero-stat,
+  .summary-metric,
+  .status-card,
+  .qr-card,
+  .attendance-card,
+  .metric-card,
+  .payment-history-row,
+  .renew-row,
+  .dash-consumer,
+  .row.clickable {
+    transition: transform .22s cubic-bezier(.2,.7,.2,1),
+                border-color .22s ease,
+                box-shadow .22s ease,
+                background-color .22s ease;
+  }
+  .panel:hover,
+  .glass-panel:hover,
+  .auth-card:hover,
+  .hero-stat:hover,
+  .summary-metric:hover,
+  .status-card:hover,
+  .qr-card:hover,
+  .attendance-card:hover,
+  .metric-card:hover,
+  .payment-history-row:hover,
+  .renew-row:hover,
+  .dash-consumer:hover,
+  .row.clickable:hover {
+    transform: translateY(-3px);
+    border-color: rgba(198,255,0,.42);
+    box-shadow: 0 12px 28px rgba(0,0,0,.26), 0 0 0 1px rgba(198,255,0,.055), 0 6px 18px rgba(198,255,0,.07);
+  }
+  /* Avoid double lift/glow when a card contains another card */
+  .panel .panel:hover,
+  .panel .glass-panel:hover {
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel, .glass-panel, .auth-card, .hero-stat, .summary-metric,
+  .status-card, .qr-card, .attendance-card, .metric-card,
+  .payment-history-row, .renew-row, .dash-consumer, .row.clickable {
+    transition: none !important;
+  }
+}
