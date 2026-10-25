@@ -11,6 +11,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.graphics.Color
+import android.content.res.ColorStateList
+import android.view.Gravity
+import android.view.View
 import android.provider.Settings
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -19,6 +23,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.widget.Toast
+import android.widget.FrameLayout
+import android.widget.ProgressBar
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +35,7 @@ import java.net.URL
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
+    private lateinit var splashOverlay: FrameLayout
     private var pendingWebPermission: PermissionRequest? = null
     private var checkingUpdate = false
 
@@ -76,6 +83,15 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = false
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !isTrustedUrl(request.url)
+
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                if (isTrustedUrl(Uri.parse(url)) && ::splashOverlay.isInitialized) {
+                    splashOverlay.animate().alpha(0f).setDuration(180).withEndAction {
+                        splashOverlay.visibility = View.GONE
+                    }.start()
+                }
+            }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
@@ -93,10 +109,31 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        setContentView(webView)
+        val root = FrameLayout(this)
+        root.addView(webView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        splashOverlay = FrameLayout(this).apply {
+            setBackgroundResource(R.drawable.messmate_splash)
+            addView(ProgressBar(this@MainActivity).apply {
+                isIndeterminate = true
+                indeterminateTintList = ColorStateList.valueOf(Color.BLACK)
+            }, FrameLayout.LayoutParams(dp(36), dp(36), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(72)
+            })
+        }
+        root.addView(splashOverlay, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        setContentView(root)
         if (savedInstanceState == null) webView.loadUrl(APP_URL) else webView.restoreState(savedInstanceState)
         checkForUpdate()
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun checkForUpdate() {
         if (checkingUpdate) return
