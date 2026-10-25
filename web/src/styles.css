@@ -584,3 +584,11 @@ html {
 /* Sign out: clear red glow on hover and keyboard focus */
 .app aside .logout{transition:color .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
 .app aside .logout:hover,.app aside .logout:focus-visible{color:#ff7777;border-color:#ff4545;background:linear-gradient(145deg,#241010,#130b0b);box-shadow:0 0 0 1px rgba(255,65,65,.14),0 0 16px rgba(255,45,45,.3);outline:none}
+
+
+/* Password eye: compact circular control aligned to the input, not a square tile */
+.password-input-wrap{position:relative;display:flex;align-items:center;width:100%;margin-top:7px}
+.password-input-wrap>input{width:100%;margin-top:0;padding-right:52px;min-height:46px}
+.password-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;min-width:34px;display:grid;place-items:center;padding:0;border:1px solid #29352b;border-radius:50%;background:#101610!important;color:#a7b4a8;box-shadow:none!important;line-height:1;transition:color .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.password-toggle svg{width:18px;height:18px;display:block}
+.password-toggle:hover,.password-toggle:focus-visible{color:var(--green);border-color:#647c2a;background:#182318!important;box-shadow:0 0 0 3px rgba(198,255,0,.08)!important;outline:none}
