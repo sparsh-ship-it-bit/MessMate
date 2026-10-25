@@ -47,7 +47,7 @@ function showUpdate(worker){waitingWorker=worker;$('updateCard').classList.remov
 $('updateBtn').onclick=()=>{if(waitingWorker){$('updateBtn').textContent='Updating…';waitingWorker.postMessage({type:'SKIP_WAITING'});}else{location.reload()}};
 if('serviceWorker' in navigator){
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshingForUpdate)return;refreshingForUpdate=true;location.reload()});
- navigator.serviceWorker.register('/mobile-sw.js').then(reg=>{
+ navigator.serviceWorker.register('/mobile-sw.js',{updateViaCache:'none'}).then(reg=>{
   if(reg.waiting&&navigator.serviceWorker.controller)showUpdate(reg.waiting);
   reg.addEventListener('updatefound',()=>{const installing=reg.installing;if(!installing)return;installing.addEventListener('statechange',()=>{if(installing.state==='installed'&&navigator.serviceWorker.controller)showUpdate(installing)})});
   reg.update().catch(()=>{});
