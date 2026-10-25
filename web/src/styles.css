@@ -131,3 +131,9 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .connection-dot.connected{background:#c6ff00;box-shadow:0 0 0 4px rgba(198,255,0,.12),0 0 10px rgba(198,255,0,.25)}
 .sidebar-connect{width:100%;min-height:34px;text-align:center}
 @media(max-width:650px){.sidebar-phone{margin:12px 0 0;padding:10px 12px;grid-template-columns:minmax(0,1fr) auto;align-items:center}.sidebar-connect{width:auto;white-space:nowrap}.logout{display:none}}
+
+/* Consistent back-to-overview navigation */
+.page-heading{min-width:0}
+.back-overview{display:inline-flex;align-items:center;gap:7px;margin:0 0 12px;padding:7px 11px;font-size:11px;color:#cbd8cb;border-color:#293b2d;background:rgba(13,20,14,.72)}
+.back-overview span:first-child{font-size:17px;line-height:1}
+.back-overview:hover{border-color:#c6ff00;color:#c6ff00}
