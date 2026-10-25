@@ -39,9 +39,13 @@ $('disconnectBtn').onclick=async()=>{if(scanner)await scanner.stop().catch(()=>{
 let heartbeatTimer=null;
 async function heartbeat(){if(!deviceToken||document.visibilityState!=='visible')return;try{const d=await request('mobile/heartbeat',{method:'POST',body:'{}'});if(d.owner_id)saveLastAccount(d.owner_id,d.paired_at||lastAccount?.connected_at);renderLastAccount(true);status('scanStatus','Phone connected · live','ok')}catch(e){status('scanStatus','Connection lost: '+e.message+' · reconnect from desktop','error')}}
 function startHeartbeat(){if(heartbeatTimer)clearInterval(heartbeatTimer);heartbeat();heartbeatTimer=setInterval(heartbeat,5000)}
+let callPollTimer=null;let openingCall=false;
+async function pollCallRequest(){if(!deviceToken||document.visibilityState!=='visible'||openingCall)return;try{const d=await request('mobile/call-request');if(!d.pending||!d.phone)return;openingCall=true;status('scanStatus','Call request for '+(d.consumer_name||'consumer')+' received. Opening phone dialer…','ok');window.location.href='tel:'+String(d.phone).replace(/[^+0-9*#]/g,'')}catch(e){if(document.visibilityState==='visible'&&deviceToken&&String(e.message||'').includes('disconnected'))status('scanStatus','Phone disconnected. Reconnect from desktop.','error')}}
+function startCallPolling(){if(callPollTimer)clearInterval(callPollTimer);pollCallRequest();callPollTimer=setInterval(pollCallRequest,2500)}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')heartbeat()});
-window.addEventListener('pagehide',()=>{if(heartbeatTimer)clearInterval(heartbeatTimer)});
+window.addEventListener('pagehide',()=>{if(heartbeatTimer)clearInterval(heartbeatTimer);if(callPollTimer)clearInterval(callPollTimer)});
 startHeartbeat();
+startCallPolling();
 let waitingWorker=null;let refreshingForUpdate=false;
 function showUpdate(worker){waitingWorker=worker;$('updateCard').classList.remove('hidden');$('updateTitle').textContent='MessMate update available';$('updateMessage').textContent='Install the latest attendance features. Your pairing is kept on this phone.';$('updateBtn').textContent='Update app';}
 $('updateBtn').onclick=()=>{if(waitingWorker){$('updateBtn').textContent='Updating…';waitingWorker.postMessage({type:'SKIP_WAITING'});}else{location.reload()}};
