@@ -68,6 +68,7 @@ func main() {
     mux.HandleFunc("POST /api/v1/workers/attendance/scan", app.auth(app.scanWorkerAttendance))
     mux.HandleFunc("POST /api/v1/workers", app.auth(app.createWorker))
     mux.HandleFunc("GET /api/v1/workers/{id}/qr", app.auth(app.workerQR))
+    mux.HandleFunc("DELETE /api/v1/workers/{id}", app.auth(app.deleteWorker))
     mux.HandleFunc("GET /api/v1/consumers", app.auth(app.listConsumers))
     mux.HandleFunc("POST /api/v1/consumers", app.auth(app.createConsumer))
     mux.HandleFunc("GET /api/v1/consumers/{id}", app.auth(app.getConsumer))
@@ -298,6 +299,16 @@ func (a *App) workerAttendanceHistory(w http.ResponseWriter,r *http.Request) {
  if err=rows.Err();err!=nil{errorJSON(w,500,"could not read worker history");return}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
 }
+func (a *App) deleteWorker(w http.ResponseWriter,r *http.Request) {
+ oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return}
+ id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid worker id");return}
+ result,err:=a.db.Exec("DELETE FROM workers WHERE id=$1 AND owner_id=$2",id,oid)
+ if err!=nil{errorJSON(w,500,"could not delete worker");return}
+ n,err:=result.RowsAffected();if err!=nil{errorJSON(w,500,"could not confirm worker deletion");return}
+ if n==0{errorJSON(w,404,"worker not found");return}
+ w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *App) listWorkers(w http.ResponseWriter, r *http.Request) {
  oid,err:=ownerID(r); if err!=nil { errorJSON(w,401,"authentication required"); return }
  rows,err:=a.db.Query(`SELECT id,name,date_joined::text,shift,qr_token FROM workers WHERE owner_id=$1 ORDER BY created_at DESC`,oid); if err!=nil { errorJSON(w,500,"could not list workers"); return }; defer rows.Close()
