@@ -280,11 +280,22 @@ func (a *App) todayWorkerAttendance(w http.ResponseWriter,r *http.Request) {
 func (a *App) workerAttendanceHistory(w http.ResponseWriter,r *http.Request) {
  oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return}
  id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid worker id");return}
- var name,shift string;if err=a.db.QueryRow("SELECT name,shift FROM workers WHERE id=$1 AND owner_id=$2",id,oid).Scan(&name,&shift);err!=nil{errorJSON(w,404,"worker not found");return}
- rows,err:=a.db.Query(`SELECT attendance_date::text,MIN(in_time),MAX(out_time),COALESCE(SUM(GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(out_time,NOW())-in_time))/60)),0)::bigint,COUNT(*) FROM worker_attendance_sessions WHERE worker_id=$1 GROUP BY attendance_date ORDER BY attendance_date DESC LIMIT 90`,id)
- if err!=nil{errorJSON(w,500,"could not load worker history");return};defer rows.Close()
- days:=[]map[string]any{}
- for rows.Next(){var date string;var inTime time.Time;var outTime sql.NullTime;var total int64;var sessions int;if rows.Scan(&date,&inTime,&outTime,&total,&sessions)==nil{days=append(days,map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":total,"total_worked_minutes":total,"sessions":sessions,"status":"summary"})}}
+ var name,shift string
+ if err=a.db.QueryRow("SELECT name,shift FROM workers WHERE id=$1 AND owner_id=$2",id,oid).Scan(&name,&shift);err!=nil{errorJSON(w,404,"worker not found");return}
+ month:=strings.TrimSpace(r.URL.Query().Get("month"))
+ query:=`SELECT attendance_date::text,id,in_time,out_time,GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(out_time,NOW())-in_time))/60)::bigint FROM worker_attendance_sessions WHERE worker_id=$1`
+ args:=[]any{id}
+ if month!="" { if len(month)!=7 || month[4]!='-' {errorJSON(w,400,"month must be YYYY-MM");return};query+=` AND to_char(attendance_date,'YYYY-MM')=$2`;args=append(args,month) } else { query+=` AND attendance_date >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '365 days'` }
+ query+=` ORDER BY attendance_date DESC,in_time ASC`
+ rows,err:=a.db.Query(query,args...);if err!=nil{errorJSON(w,500,"could not load worker history");return};defer rows.Close()
+ days:=[]map[string]any{};byDate:=map[string]map[string]any{}
+ for rows.Next(){var date string;var sessionID uuid.UUID;var inTime time.Time;var outTime sql.NullTime;var minutes int64
+  if err=rows.Scan(&date,&sessionID,&inTime,&outTime,&minutes);err!=nil{errorJSON(w,500,"could not read worker history");return}
+  day:=byDate[date];if day==nil{day=map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":int64(0),"total_worked_minutes":int64(0),"sessions":[]map[string]any{}};byDate[date]=day;days=append(days,day)}
+  sessions:=day["sessions"].([]map[string]any);sessions=append(sessions,map[string]any{"id":sessionID,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":func()string{if outTime.Valid{return "complete"};return "in"}()});day["sessions"]=sessions
+  total:=day["total_worked_minutes"].(int64)+minutes;day["total_worked_minutes"]=total;day["worked_minutes"]=total;day["session_count"]=len(sessions);day["out_time"]=nullableWorkerTime(outTime)
+ }
+ if err=rows.Err();err!=nil{errorJSON(w,500,"could not read worker history");return}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
 }
 func (a *App) listWorkers(w http.ResponseWriter, r *http.Request) {
