@@ -179,3 +179,17 @@ html {
 @media (prefers-reduced-motion: reduce) {
   ::-webkit-scrollbar-thumb { transition: none; }
 }
+
+
+/* Matching MessMate cursor accents for the desktop web app */
+@media (hover: hover) and (pointer: fine) {
+  body, body * {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 2.5 19 15l-6.2.5-3.1 5.1L5 2.5Z' fill='%23c6ff00' stroke='%23080e09' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") 5 3, auto;
+  }
+  button, a, [role="button"], select, summary, label[for], .clickable {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V5.5a1.5 1.5 0 0 1 3 0V10 4.5a1.5 1.5 0 0 1 3 0V10 6a1.5 1.5 0 0 1 3 0v5-1a1.5 1.5 0 0 1 3 0v5.2c0 3.7-2.4 6.3-6.2 6.3h-1.1c-2.1 0-3.4-.8-4.7-2.3L4.4 16a1.7 1.7 0 0 1 2.5-2.2L9 15.8V11a1.5 1.5 0 0 1-1.5 0Z' fill='%23c6ff00' stroke='%23080e09' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 8 5, pointer;
+  }
+  button:hover, a:hover, [role="button"]:hover, select:hover, summary:hover, .clickable:hover {
+    filter: brightness(1.04);
+  }
+}
