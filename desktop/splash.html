@@ -12,7 +12,7 @@
       display: grid;
       place-items: center;
       overflow: hidden;
-      background: #050505;
+      background: #050805;
       color: #f5f5f0;
       font-family: "Segoe UI", Arial, sans-serif;
     }
@@ -22,48 +22,70 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 18px;
+      gap: 17px;
       padding: 28px;
     }
-    .mark {
-      display: block;
-      width: min(224px, 64vw);
-      height: auto;
-      aspect-ratio: 256 / 128;
+    .app-icon {
+      width: 112px;
+      height: 112px;
+      filter: drop-shadow(0 0 26px rgba(198,255,0,.14));
       opacity: 0;
-      transform: translateY(5px);
-      animation: enter .4s ease-out .04s forwards;
+      transform: scale(.92) translateY(6px);
+      animation: reveal .48s cubic-bezier(.2,.8,.2,1) .04s forwards;
     }
     .name {
-      font-size: clamp(28px, 7vw, 36px);
+      font-size: 34px;
       line-height: 1.15;
-      font-weight: 650;
+      font-weight: 700;
       letter-spacing: -.9px;
       white-space: nowrap;
       opacity: 0;
-      transform: translateY(5px);
-      animation: enter .4s ease-out .14s forwards;
+      transform: translateY(6px);
+      animation: reveal .42s ease-out .16s forwards;
     }
-    .name span { color: #39d353; }
-    @keyframes enter { to { opacity: 1; transform: translateY(0); } }
+    .name span { color: #c6ff00; }
+    .tagline {
+      margin-top: -7px;
+      color: #7f8875;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 3.1px;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: fade-in .4s ease-out .28s forwards;
+    }
+    .loader {
+      display: flex;
+      gap: 6px;
+      margin-top: 13px;
+    }
+    .loader span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #c6ff00;
+      opacity: .25;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    .loader span:nth-child(2) { animation-delay: .15s; }
+    .loader span:nth-child(3) { animation-delay: .3s; }
+    @keyframes reveal { to { opacity: 1; transform: scale(1) translateY(0); } }
+    @keyframes fade-in { to { opacity: 1; } }
+    @keyframes pulse { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.15); } }
     @media (prefers-reduced-motion: reduce) {
-      .mark, .name { animation-duration: .01ms; animation-delay: 0ms; }
+      .app-icon, .name, .tagline, .loader span { animation-duration: .01ms; animation-delay: 0ms; }
     }
   </style>
 </head>
 <body>
   <main class="brand" aria-label="MessMate starting">
-    <svg class="mark" viewBox="0 0 256 128" role="img" aria-label="Two distinct M letters" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#b7ff43"/>
-          <stop offset="1" stop-color="#00b83f"/>
-        </linearGradient>
-      </defs>
-      <path d="M10 118V10H31L65 51L99 10H120V118H96V48L65 85L34 48V118Z" fill="#F5F5F0"/>
-      <path d="M136 118V10H157L191 51L225 10H246V118H222V48L191 85L160 48V118Z" fill="url(#green)"/>
+    <svg class="app-icon" viewBox="0 0 512 512" role="img" aria-label="MessMate app icon" xmlns="http://www.w3.org/2000/svg">
+      <rect width="512" height="512" rx="104" fill="#c6ff00"/>
+      <path d="M92 370V142L256 284L420 142V370" fill="none" stroke="#050805" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
     <div class="name">Mess<span>Mate</span></div>
+    <div class="tagline">Mess management, simplified</div>
+    <div class="loader" role="status" aria-label="Loading"><span></span><span></span><span></span></div>
   </main>
 </body>
 </html>
