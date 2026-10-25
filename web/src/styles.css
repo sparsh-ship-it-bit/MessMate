@@ -557,3 +557,12 @@ html {
     box-shadow: none !important;
   }
 }
+
+
+/* Remove the enclosing outline around the four payment-status tiles only. */
+.content .status-cards {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
