@@ -3,6 +3,11 @@ name: Build MessMate Android APK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/workflows/android-apk.yml"
     tags:
       - "v*"
 
