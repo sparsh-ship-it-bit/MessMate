@@ -87,11 +87,6 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (::webView.isInitialized && webView.url?.startsWith(APP_URL) == true) webView.reload()
-    }
-
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
