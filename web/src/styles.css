@@ -566,3 +566,9 @@ html {
   box-shadow: none !important;
   background: transparent !important;
 }
+
+
+/* Feedback entry and submission form */
+.sidebar-feedback{width:100%;margin:0 0 10px;text-align:left;justify-content:flex-start}
+.modal textarea{width:100%;min-height:130px;resize:vertical;padding:12px 14px;border-radius:12px;border:1px solid var(--line,#29352b);background:var(--surface,#101610);color:var(--text,#f4f7f2);font:inherit;line-height:1.5}
+.modal textarea:focus{outline:1px solid var(--green,#c6ff00);border-color:var(--green,#c6ff00)}
