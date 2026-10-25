@@ -579,3 +579,8 @@ html {
 .app aside .sidebar-phone{margin-top:auto;margin-bottom:10px}
 .app aside .logout{margin-top:0}
 @media(max-width:650px){.app aside .sidebar-phone{margin-top:12px;margin-bottom:10px}.sidebar-feedback{margin-bottom:10px;font-size:14px}}
+
+
+/* Sign out: clear red glow on hover and keyboard focus */
+.app aside .logout{transition:color .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.app aside .logout:hover,.app aside .logout:focus-visible{color:#ff7777;border-color:#ff4545;background:linear-gradient(145deg,#241010,#130b0b);box-shadow:0 0 0 1px rgba(255,65,65,.14),0 0 16px rgba(255,45,45,.3);outline:none}
