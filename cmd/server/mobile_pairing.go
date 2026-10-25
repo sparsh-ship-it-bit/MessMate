@@ -144,3 +144,13 @@ func (a *App) mobileWorkerAttendanceHistory(w http.ResponseWriter,r *http.Reques
  for rows.Next(){var date string;var inTime time.Time;var outTime sql.NullTime;var minutes int64;if rows.Scan(&date,&inTime,&outTime,&minutes)==nil{status:="in";if outTime.Valid{status="out"};days=append(days,map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})}}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
 }
+
+
+func (a *App) mobileListWorkers(w http.ResponseWriter,r *http.Request) {
+ owner,err:=mobileDeviceOwner(a,r);if err!=nil{errorJSON(w,401,"phone pairing expired or disconnected; pair again from desktop");return}
+ rows,err:=a.db.Query(`SELECT id,name,date_joined::text,shift FROM workers WHERE owner_id=$1 ORDER BY name`,owner)
+ if err!=nil{errorJSON(w,500,"could not load workers");return};defer rows.Close()
+ out:=[]map[string]any{}
+ for rows.Next(){var id uuid.UUID;var name,dateJoined,shift string;if rows.Scan(&id,&name,&dateJoined,&shift)==nil{out=append(out,map[string]any{"id":id,"name":name,"date_joined":dateJoined,"shift":shift})}}
+ writeJSON(w,200,out)
+}
