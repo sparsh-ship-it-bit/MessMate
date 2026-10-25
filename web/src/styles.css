@@ -120,3 +120,14 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .month-picker select{height:42px;min-height:42px;padding:0 34px 0 14px;border-radius:12px;background-position:right 12px center;background-size:13px 13px;font-size:13px;font-weight:600}
 .header-actions>.primary{height:42px;min-height:42px;padding:0 17px;border-radius:12px;font-size:13px}
 @media(max-width:650px){.header-actions{gap:8px}.month-picker{min-width:0;width:min(200px,50vw);flex:1}.month-picker select{height:42px;min-height:42px;padding-left:12px;padding-right:30px;background-position:right 10px center;background-size:12px 12px;font-size:12px}.header-actions>.primary{height:42px;min-height:42px;padding:0 12px;font-size:12px}}
+
+/* Sidebar phone connection controls */
+.sidebar-phone{margin-top:auto;margin-bottom:12px;padding:12px 10px;border:1px solid #263329;border-radius:13px;background:linear-gradient(145deg,rgba(20,31,22,.9),rgba(10,14,11,.95));display:grid;gap:10px;min-width:0}
+.sidebar-phone-status{display:flex;align-items:center;gap:9px;min-width:0}
+.sidebar-phone-status>div{min-width:0}
+.sidebar-phone-status b{display:block;font-size:11px;line-height:1.35;color:#e8eee7}
+.sidebar-phone-status small{display:block;margin-top:3px;font-size:10px;line-height:1.35;color:#788579}
+.connection-dot{width:8px;height:8px;border-radius:50%;background:#7b8490;flex:none;box-shadow:0 0 0 4px rgba(123,132,144,.12)}
+.connection-dot.connected{background:#c6ff00;box-shadow:0 0 0 4px rgba(198,255,0,.12),0 0 10px rgba(198,255,0,.25)}
+.sidebar-connect{width:100%;min-height:34px;text-align:center}
+@media(max-width:650px){.sidebar-phone{margin:12px 0 0;padding:10px 12px;grid-template-columns:minmax(0,1fr) auto;align-items:center}.sidebar-connect{width:auto;white-space:nowrap}.logout{display:none}}
