@@ -490,3 +490,23 @@ html {
   outline: 0 !important;
   box-shadow: none !important;
 }
+
+
+/* Dashboard summary: hover the complete consumer overview tile, not individual metrics. */
+@media (hover: hover) and (pointer: fine) {
+  .content .consumer-summary {
+    transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background-color .22s ease;
+  }
+  .content .consumer-summary:hover {
+    transform: translateY(-3px);
+    border-color: #4a642f;
+    box-shadow: 0 12px 28px rgba(0,0,0,.26), 0 6px 18px rgba(198,255,0,.07);
+  }
+  .content .consumer-summary .summary-metric,
+  .content .consumer-summary .summary-metric:hover {
+    transform: none !important;
+    border-left-color: #263029 !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
