@@ -3,7 +3,32 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val releaseKeystorePath = System.getenv("MESSMATE_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("MESSMATE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("MESSMATE_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("MESSMATE_KEY_PASSWORD")
+
 android {
+    signingConfigs {
+        create("messmateRelease") {
+            if (!releaseKeystorePath.isNullOrBlank()) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (!releaseKeystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("messmateRelease")
+            }
+        }
+    }
+
     buildFeatures {
         buildConfig = true
     }
