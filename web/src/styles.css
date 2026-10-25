@@ -137,3 +137,10 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .back-overview{display:inline-flex;align-items:center;gap:7px;margin:0 0 12px;padding:7px 11px;font-size:11px;color:#cbd8cb;border-color:#293b2d;background:rgba(13,20,14,.72)}
 .back-overview span:first-child{font-size:17px;line-height:1}
 .back-overview:hover{border-color:#c6ff00;color:#c6ff00}
+
+/* Clear visual warning for close/cross controls and disconnected phone */
+.close{color:#ff7777;border-color:#713232;background:linear-gradient(145deg,#241010,#130b0b);box-shadow:0 0 0 1px rgba(255,65,65,.12),0 0 12px rgba(255,45,45,.18);transition:box-shadow .18s ease,border-color .18s ease,color .18s ease}
+.close:hover,.close:focus-visible{color:#fff;border-color:#ff4545;box-shadow:0 0 0 2px rgba(255,65,65,.18),0 0 18px rgba(255,45,45,.42);outline:none}
+.sidebar-phone-status .connection-dot:not(.connected){background:#ff4141;box-shadow:0 0 0 4px rgba(255,65,65,.13),0 0 12px rgba(255,45,45,.48);animation:mm-disconnected-pulse 2s ease-in-out infinite}
+@keyframes mm-disconnected-pulse{0%,100%{box-shadow:0 0 0 3px rgba(255,65,65,.1),0 0 7px rgba(255,45,45,.28)}50%{box-shadow:0 0 0 5px rgba(255,65,65,.17),0 0 15px rgba(255,45,45,.55)}}
+@media(prefers-reduced-motion:reduce){.sidebar-phone-status .connection-dot:not(.connected){animation:none}}
