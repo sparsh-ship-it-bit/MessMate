@@ -144,3 +144,38 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 .sidebar-phone-status .connection-dot:not(.connected){background:#ff4141;box-shadow:0 0 0 4px rgba(255,65,65,.13),0 0 12px rgba(255,45,45,.48);animation:mm-disconnected-pulse 2s ease-in-out infinite}
 @keyframes mm-disconnected-pulse{0%,100%{box-shadow:0 0 0 3px rgba(255,65,65,.1),0 0 7px rgba(255,45,45,.28)}50%{box-shadow:0 0 0 5px rgba(255,65,65,.17),0 0 15px rgba(255,45,45,.55)}}
 @media(prefers-reduced-motion:reduce){.sidebar-phone-status .connection-dot:not(.connected){animation:none}}
+
+
+/* MessMate scrollbar: slim lime thumb with a subtle hover glow */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #c6ff00 #111611;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c6ff00 #111611;
+}
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: #111611;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #64705b;
+  border: 2px solid #111611;
+  border-radius: 999px;
+  transition: background-color .18s ease, box-shadow .18s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c6ff00;
+  box-shadow: 0 0 8px rgba(198, 255, 0, .35);
+}
+::-webkit-scrollbar-corner {
+  background: #111611;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::-webkit-scrollbar-thumb { transition: none; }
+}
