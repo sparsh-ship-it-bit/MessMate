@@ -467,3 +467,13 @@ html {
   .content .renew-row, .content .report-grid > div, .content .qr-card,
   .content .scanner-panel { transition: none !important; }
 }
+
+
+/* Keep dashboard metric cards clean on hover: no rectangular outline. */
+@media (hover: hover) and (pointer: fine) {
+  .content .hero-stat:hover,
+  .content .panel:hover {
+    border-color: rgba(255,255,255,.09);
+    outline: none;
+  }
+}
