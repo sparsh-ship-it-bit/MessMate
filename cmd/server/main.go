@@ -94,7 +94,7 @@ func main() {
     mux.HandleFunc("GET /api/v1/mobile/scans", app.auth(app.mobileScanEvents))
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
-    registerWeb(mux)
+    registerWeb(mux, db)
     handler := cors(logging(mux))
     port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
