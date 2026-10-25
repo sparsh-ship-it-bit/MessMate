@@ -193,3 +193,14 @@ html {
     filter: brightness(1.04);
   }
 }
+
+
+/* Outline-only lime cursor, matching the requested reference */
+@media (hover: hover) and (pointer: fine) {
+  body, body * {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M6 3.5 22 13.5 14.7 15 11 22.5 6 3.5Z' fill='none' stroke='%23c6ff00' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E") 6 4, auto;
+  }
+  button, a, [role="button"], select, summary, label[for], .clickable {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M6 3.5 22 13.5 14.7 15 11 22.5 6 3.5Z' fill='none' stroke='%23c6ff00' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E") 6 4, pointer;
+  }
+}
