@@ -88,7 +88,15 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !isTrustedUrl(request.url)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val uri = request.url
+                if (uri.scheme == "tel") {
+                    try { startActivity(Intent(Intent.ACTION_DIAL, uri)) }
+                    catch (_: Exception) { Toast.makeText(this@MainActivity, "No phone dialer is available.", Toast.LENGTH_LONG).show() }
+                    return true
+                }
+                return !isTrustedUrl(uri)
+            }
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
