@@ -91,11 +91,11 @@ func (a *App) mobileScanEvents(w http.ResponseWriter,r *http.Request) {
 func (a *App) mobileHeartbeat(w http.ResponseWriter, r *http.Request) {
   token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
   if token == "" { errorJSON(w, 401, "device is not paired"); return }
-  result, err := a.db.Exec(`UPDATE mobile_pairings SET last_seen_at=NOW() WHERE device_token_hash=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days'`, hashPairSecret(token))
-  if err != nil { errorJSON(w, 500, "could not update phone connection"); return }
-  n, err := result.RowsAffected()
-  if err != nil || n == 0 { errorJSON(w, 401, "device pairing expired or disconnected; pair again from desktop"); return }
-  writeJSON(w, 200, map[string]any{"connected": true})
+  var owner uuid.UUID
+  var pairedAt, lastSeenAt time.Time
+  err := a.db.QueryRow(`UPDATE mobile_pairings SET last_seen_at=NOW() WHERE device_token_hash=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days' RETURNING owner_id,paired_at,last_seen_at`, hashPairSecret(token)).Scan(&owner, &pairedAt, &lastSeenAt)
+  if err != nil { errorJSON(w, 401, "device pairing expired or disconnected; pair again from desktop"); return }
+  writeJSON(w, 200, map[string]any{"connected": true, "owner_id": owner, "paired_at": pairedAt, "last_seen_at": lastSeenAt})
 }
 
 
