@@ -15,6 +15,12 @@ import android.graphics.Color
 import android.content.res.ColorStateList
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.provider.Settings
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -116,13 +122,53 @@ class MainActivity : AppCompatActivity() {
         ))
 
         splashOverlay = FrameLayout(this).apply {
-            setBackgroundResource(R.drawable.messmate_splash)
-            addView(ProgressBar(this@MainActivity).apply {
-                isIndeterminate = true
-                indeterminateTintList = ColorStateList.valueOf(Color.BLACK)
-            }, FrameLayout.LayoutParams(dp(36), dp(36), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(72)
-            })
+            // Keep the entire screen neon green while the WebView is loading.
+            setBackgroundColor(Color.rgb(198, 255, 0))
+
+            val splashContent = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+            }
+
+            splashContent.addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.messmate_icon)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "MessMate"
+            }, LinearLayout.LayoutParams(dp(132), dp(132)))
+
+            val dots = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            repeat(3) { index ->
+                val dot = TextView(this@MainActivity).apply {
+                    text = "•"
+                    textSize = 32f
+                    setTextColor(Color.BLACK)
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                }
+                val dotParams = LinearLayout.LayoutParams(dp(22), dp(30)).apply {
+                    leftMargin = dp(2)
+                    rightMargin = dp(2)
+                    topMargin = dp(16)
+                }
+                dots.addView(dot, dotParams)
+                ObjectAnimator.ofFloat(dot, View.TRANSLATION_Y, 0f, -dp(8).toFloat(), 0f).apply {
+                    duration = 620L
+                    startDelay = index * 150L
+                    repeatCount = ValueAnimator.INFINITE
+                    repeatMode = ValueAnimator.RESTART
+                    start()
+                }
+            }
+            splashContent.addView(dots)
+            addView(splashContent, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            ))
         }
         root.addView(splashOverlay, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
