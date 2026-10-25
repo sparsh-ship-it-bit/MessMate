@@ -111,20 +111,29 @@ class MainActivity : AppCompatActivity() {
                     setRequestProperty("User-Agent", "MessMate-Android")
                 }
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) return@Thread
-                val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                if (release.optBoolean("draft") || release.optBoolean("prerelease")) return@Thread
-                val latest = release.optString("tag_name").removePrefix("v")
-                if (compareVersions(latest, BuildConfig.VERSION_NAME) <= 0) return@Thread
-                val assets = release.optJSONArray("assets") ?: return@Thread
+                val releases = org.json.JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
+                var latest = ""
                 var apkUrl = ""
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    if (asset.optString("name") == APK_ASSET_NAME) {
-                        apkUrl = asset.optString("browser_download_url")
-                        break
+                for (releaseIndex in 0 until releases.length()) {
+                    val release = releases.getJSONObject(releaseIndex)
+                    if (release.optBoolean("draft") || release.optBoolean("prerelease")) continue
+                    val version = release.optString("tag_name").removePrefix("v")
+                    if (compareVersions(version, BuildConfig.VERSION_NAME) <= 0) continue
+                    val assets = release.optJSONArray("assets") ?: continue
+                    for (assetIndex in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(assetIndex)
+                        if (asset.optString("name") == APK_ASSET_NAME) {
+                            val candidate = asset.optString("browser_download_url")
+                            if (candidate.startsWith("https://github.com/")) {
+                                latest = version
+                                apkUrl = candidate
+                            }
+                            break
+                        }
                     }
+                    if (apkUrl.isNotEmpty()) break
                 }
-                if (!apkUrl.startsWith("https://github.com/")) return@Thread
+                if (apkUrl.isEmpty()) return@Thread
                 runOnUiThread { showUpdateDialog(latest, apkUrl) }
             } catch (_: Exception) {
                 // Keep the app usable when the update service is unavailable.
@@ -232,7 +241,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TRUSTED_HOST = "messmate-zhms.onrender.com"
         private const val APP_URL = "https://messmate-zhms.onrender.com/mobile-scan.html"
-        private const val LATEST_RELEASE_API = "https://api.github.com/repos/sparsh-ship-it-bit/MessMate/releases/latest"
+        private const val LATEST_RELEASE_API = "https://api.github.com/repos/sparsh-ship-it-bit/MessMate/releases?per_page=20"
         private const val APK_ASSET_NAME = "MessMate-Android.apk"
         private const val UPDATE_PREFS = "messmate_updates"
         private const val PENDING_DOWNLOAD_ID = "pending_download_id"
