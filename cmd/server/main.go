@@ -49,7 +49,8 @@ func main() {
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
     if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
     if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS workers (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE CASCADE, name VARCHAR(120) NOT NULL, date_joined DATE NOT NULL, shift VARCHAR(40) NOT NULL, qr_token UUID NOT NULL UNIQUE DEFAULT uuid_generate_v4(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`); err != nil { log.Fatal("workers migration: ", err) }
-    if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS worker_attendance (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), worker_id UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE, attendance_date DATE NOT NULL DEFAULT ((NOW() AT TIME ZONE 'Asia/Kolkata')::date), shift VARCHAR(40) NOT NULL, scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(worker_id, attendance_date))`); err != nil { log.Fatal("worker attendance migration: ", err) }
+    if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS worker_attendance (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), worker_id UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE, attendance_date DATE NOT NULL DEFAULT ((NOW() AT TIME ZONE 'Asia/Kolkata')::date), shift VARCHAR(40) NOT NULL, scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), out_time TIMESTAMPTZ NULL, UNIQUE(worker_id, attendance_date))`); err != nil { log.Fatal("worker attendance migration: ", err) }
+    if _, err = db.Exec(`ALTER TABLE worker_attendance ADD COLUMN IF NOT EXISTS out_time TIMESTAMPTZ NULL`); err != nil { log.Fatal("worker attendance out-time migration: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
     app := &App{db: db, jwtSecret: []byte(jwtSecret), ttl: time.Duration(ttlHours)*time.Hour}
     mux := http.NewServeMux()
@@ -60,6 +61,7 @@ func main() {
     mux.HandleFunc("GET /api/v1/analytics", app.auth(app.monthlyAnalytics))
     mux.HandleFunc("GET /api/v1/workers", app.auth(app.listWorkers))
     mux.HandleFunc("GET /api/v1/workers/attendance/today", app.auth(app.todayWorkerAttendance))
+    mux.HandleFunc("GET /api/v1/workers/{id}/attendance", app.auth(app.workerAttendanceHistory))
     mux.HandleFunc("POST /api/v1/workers/attendance/scan", app.auth(app.scanWorkerAttendance))
     mux.HandleFunc("POST /api/v1/workers", app.auth(app.createWorker))
     mux.HandleFunc("GET /api/v1/workers/{id}/qr", app.auth(app.workerQR))
@@ -226,18 +228,38 @@ func (a *App) deleteConsumer(w http.ResponseWriter,r *http.Request){oid,_:=owner
 type workerRequest struct { Name string `json:"name"`; DateJoined string `json:"date_joined"`; Shift string `json:"shift"` }
 type workerAttendanceRequest struct { QRToken string `json:"qr_token"` }
 func (a *App) scanWorkerAttendance(w http.ResponseWriter,r *http.Request) {
- oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return};var req workerAttendanceRequest
- if decode(r,&req)!=nil{errorJSON(w,400,"invalid request");return};token,err:=uuid.Parse(req.QRToken);if err!=nil{errorJSON(w,400,"invalid worker QR token");return}
+ oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return}
+ var req workerAttendanceRequest
+ if decode(r,&req)!=nil{errorJSON(w,400,"invalid request");return}
+ token,err:=uuid.Parse(req.QRToken);if err!=nil{errorJSON(w,400,"invalid worker QR token");return}
  var workerID uuid.UUID;var name,shift string
- err=a.db.QueryRow("SELECT id,name,shift FROM workers WHERE qr_token=$1 AND owner_id=$2",token,oid).Scan(&workerID,&name,&shift);if err!=nil{errorJSON(w,404,"worker not found");return}
- var attendanceID uuid.UUID;var scanned time.Time
- err=a.db.QueryRow("INSERT INTO worker_attendance(worker_id,attendance_date,shift) VALUES($1,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,$2) ON CONFLICT(worker_id,attendance_date) DO NOTHING RETURNING id,scanned_at",workerID,shift).Scan(&attendanceID,&scanned)
- if err!=nil{errorJSON(w,409,"worker attendance already marked today");return};writeJSON(w,201,map[string]any{"attendance_id":attendanceID,"worker_id":workerID,"name":name,"shift":shift,"scanned_at":scanned,"status":"marked"})
+ err=a.db.QueryRow("SELECT id,name,shift FROM workers WHERE qr_token=$1 AND owner_id=$2",token,oid).Scan(&workerID,&name,&shift)
+ if err!=nil{errorJSON(w,404,"worker not found");return}
+ var attendanceID uuid.UUID;var inTime time.Time;var outTime sql.NullTime
+ err=a.db.QueryRow("INSERT INTO worker_attendance(worker_id,attendance_date,shift) VALUES($1,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,$2) ON CONFLICT(worker_id,attendance_date) DO UPDATE SET out_time=NOW() WHERE worker_attendance.out_time IS NULL RETURNING id,scanned_at,out_time",workerID,shift).Scan(&attendanceID,&inTime,&outTime)
+ if err!=nil{errorJSON(w,409,"worker has already checked in and out today");return}
+ status:="in";var minutes int64
+ if outTime.Valid { status="out";minutes=int64(outTime.Time.Sub(inTime).Minutes());if minutes<0{minutes=0} }
+ writeJSON(w,201,map[string]any{"attendance_id":attendanceID,"worker_id":workerID,"name":name,"shift":shift,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})
 }
+func nullableWorkerTime(t sql.NullTime) any { if !t.Valid{return nil};return t.Time }
 func (a *App) todayWorkerAttendance(w http.ResponseWriter,r *http.Request) {
  oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return}
- rows,err:=a.db.Query("SELECT w.id,w.name,w.shift,wa.scanned_at FROM worker_attendance wa JOIN workers w ON w.id=wa.worker_id WHERE w.owner_id=$1 AND wa.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY wa.scanned_at DESC",oid);if err!=nil{errorJSON(w,500,"could not load worker attendance");return};defer rows.Close()
- out:=[]map[string]any{};for rows.Next(){var id uuid.UUID;var name,shift string;var scanned time.Time;if rows.Scan(&id,&name,&shift,&scanned)==nil{out=append(out,map[string]any{"worker_id":id,"name":name,"shift":shift,"scanned_at":scanned})}};writeJSON(w,200,out)
+ rows,err:=a.db.Query("SELECT w.id,w.name,w.shift,wa.scanned_at,wa.out_time,GREATEST(0,COALESCE(EXTRACT(EPOCH FROM (wa.out_time-wa.scanned_at))/60,0))::bigint FROM worker_attendance wa JOIN workers w ON w.id=wa.worker_id WHERE w.owner_id=$1 AND wa.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY wa.scanned_at DESC",oid)
+ if err!=nil{errorJSON(w,500,"could not load worker attendance");return};defer rows.Close()
+ out:=[]map[string]any{}
+ for rows.Next(){var id uuid.UUID;var name,shift string;var inTime time.Time;var outTime sql.NullTime;var minutes int64;if rows.Scan(&id,&name,&shift,&inTime,&outTime,&minutes)==nil{status:="in";if outTime.Valid{status="out"};out=append(out,map[string]any{"worker_id":id,"name":name,"shift":shift,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})}}
+ writeJSON(w,200,out)
+}
+func (a *App) workerAttendanceHistory(w http.ResponseWriter,r *http.Request) {
+ oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return}
+ id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid worker id");return}
+ var name,shift string;if err=a.db.QueryRow("SELECT name,shift FROM workers WHERE id=$1 AND owner_id=$2",id,oid).Scan(&name,&shift);err!=nil{errorJSON(w,404,"worker not found");return}
+ rows,err:=a.db.Query("SELECT attendance_date::text,scanned_at,out_time,GREATEST(0,COALESCE(EXTRACT(EPOCH FROM (out_time-scanned_at))/60,0))::bigint FROM worker_attendance WHERE worker_id=$1 ORDER BY attendance_date DESC LIMIT 90",id)
+ if err!=nil{errorJSON(w,500,"could not load worker history");return};defer rows.Close()
+ days:=[]map[string]any{}
+ for rows.Next(){var date string;var inTime time.Time;var outTime sql.NullTime;var minutes int64;if rows.Scan(&date,&inTime,&outTime,&minutes)==nil{status:="in";if outTime.Valid{status="out"};days=append(days,map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})}}
+ writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
 }
 func (a *App) listWorkers(w http.ResponseWriter, r *http.Request) {
  oid,err:=ownerID(r); if err!=nil { errorJSON(w,401,"authentication required"); return }
