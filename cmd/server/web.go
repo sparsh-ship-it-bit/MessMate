@@ -13,6 +13,7 @@ import (
     "net/url"
     "errors"
     "net/http"
+    "net/smtp"
     "os"
     "strings"
     "time"
@@ -28,6 +29,7 @@ import (
 func registerWeb(mux *http.ServeMux) {
     mux.HandleFunc("GET /api/v1/subscriptions/renew-info/{id}", renewalInfo)
     mux.HandleFunc("POST /api/v1/subscriptions/renew", renewSubscription)
+    mux.HandleFunc("POST /api/v1/feedback", submitFeedback)
     mux.HandleFunc("GET /api/v1/payments/upi-settings", paymentUPISettings)
     mux.HandleFunc("PUT /api/v1/payments/upi-settings", updatePaymentUPISettings)
     mux.HandleFunc("POST /api/v1/payments/upi-qr", paymentUPIQR)
@@ -42,6 +44,40 @@ func registerWeb(mux *http.ServeMux) {
         dir = "web/dist"
     }
     mux.Handle("/", staticCacheHeaders(http.FileServer(http.Dir(dir))))
+}
+
+type feedbackRequest struct { Subject string `json:"subject"`; Description string `json:"description"` }
+
+// submitFeedback sends feedback to the configured team inbox through SMTP.
+func submitFeedback(w http.ResponseWriter, r *http.Request) {
+    r.Body = http.MaxBytesReader(w, r.Body, 12*1024)
+    var req feedbackRequest
+    if decode(r, &req) != nil { errorJSON(w, 400, "invalid feedback request"); return }
+    req.Subject = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(req.Subject, "\r", " "), "\n", " "))
+    req.Description = strings.TrimSpace(req.Description)
+    if req.Subject == "" || len(req.Subject) > 120 || req.Description == "" || len(req.Description) > 5000 {
+        errorJSON(w, 400, "subject (1–120 characters) and description (1–5000 characters) are required"); return
+    }
+    host, port := strings.TrimSpace(os.Getenv("SMTP_HOST")), getenv("SMTP_PORT", "587")
+    username, password := strings.TrimSpace(os.Getenv("SMTP_USERNAME")), os.Getenv("SMTP_PASSWORD")
+    from, to := strings.TrimSpace(os.Getenv("SMTP_FROM")), strings.TrimSpace(os.Getenv("FEEDBACK_EMAIL"))
+    if host == "" || username == "" || password == "" || from == "" || to == "" {
+        errorJSON(w, 503, "Feedback email is not configured yet. Please try again later."); return
+    }
+    if strings.ContainsAny(from+to, "\r\n") || !strings.Contains(from, "@") || !strings.Contains(to, "@") {
+        errorJSON(w, 503, "Feedback email configuration is invalid."); return
+    }
+    message := "From: MessMate Feedback <" + from + ">\r\n" +
+        "To: " + to + "\r\n" +
+        "Subject: [MessMate Feedback] " + req.Subject + "\r\n" +
+        "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" +
+        "New feedback submitted from MessMate.\r\n\r\nSubject: " + req.Subject + "\r\n\r\nDescription:\r\n" + req.Description + "\r\n"
+    auth := smtp.PlainAuth("", username, password, host)
+    if err := smtp.SendMail(host+":"+port, auth, from, []string{to}, []byte(message)); err != nil {
+        log.Printf("feedback email send failed: %v", err)
+        errorJSON(w, 502, "Could not send feedback right now. Please try again later."); return
+    }
+    writeJSON(w, 200, map[string]string{"message":"Feedback sent successfully. Thank you!"})
 }
 
 func staticCacheHeaders(next http.Handler) http.Handler {
