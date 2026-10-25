@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                 for (releaseIndex in 0 until releases.length()) {
                     val release = releases.getJSONObject(releaseIndex)
                     if (release.optBoolean("draft") || release.optBoolean("prerelease")) continue
-                    val version = release.optString("tag_name").removePrefix("v")
+                    val version = release.optString("tag_name").removePrefix("android-v").removePrefix("v")
                     if (compareVersions(version, BuildConfig.VERSION_NAME) <= 0) continue
                     val assets = release.optJSONArray("assets") ?: continue
                     for (assetIndex in 0 until assets.length()) {
