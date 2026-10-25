@@ -510,3 +510,50 @@ html {
     box-shadow: none !important;
   }
 }
+
+
+/* Consistent whole-tile hover behavior across every MessMate tab.
+   Lift the outer card/tile as a unit; keep nested metrics and rows visually quiet. */
+@media (hover: hover) and (pointer: fine) {
+  .content .panel,
+  .content .hero-stat,
+  .content .summary-card,
+  .content .status-card,
+  .content .attendance-card,
+  .content .report-grid > div,
+  .content .qr-card,
+  .content .scanner-panel,
+  .content .month-banner,
+  .content .collection-summary,
+  .content .consumer-summary {
+    transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background-color .22s ease;
+  }
+
+  .content .panel:hover,
+  .content .hero-stat:hover,
+  .content .summary-card:hover,
+  .content .status-card:hover,
+  .content .attendance-card:hover,
+  .content .report-grid > div:hover,
+  .content .qr-card:hover,
+  .content .scanner-panel:hover,
+  .content .month-banner:hover,
+  .content .collection-summary:hover,
+  .content .consumer-summary:hover {
+    transform: translateY(-3px);
+    border-color: #4a642f;
+    box-shadow: 0 12px 28px rgba(0,0,0,.26), 0 6px 18px rgba(198,255,0,.07);
+  }
+
+  .content .summary-metric,
+  .content .summary-metric:hover,
+  .content .panel .row,
+  .content .panel .row:hover,
+  .content .meal-list > div,
+  .content .meal-list > div:hover,
+  .content .meal-graph,
+  .content .meal-graph:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
