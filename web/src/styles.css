@@ -334,3 +334,34 @@ html {
     transition: none !important;
   }
 }
+
+
+/* FIX: hover the outer dashboard card, not the inner Meals Attendance chart */
+@media (hover: hover) and (pointer: fine) {
+  .panel.glass-panel,
+  .hero-stat {
+    position: relative;
+    transition: transform .24s cubic-bezier(.2,.7,.2,1),
+                border-color .24s ease,
+                box-shadow .24s ease,
+                background-color .24s ease;
+    will-change: transform;
+  }
+  .panel.glass-panel:hover,
+  .hero-stat:hover {
+    transform: translateY(-4px);
+    border-color: rgba(198,255,0,.48);
+    box-shadow: 0 14px 32px rgba(0,0,0,.30), 0 0 0 1px rgba(198,255,0,.08), 0 7px 22px rgba(198,255,0,.09);
+  }
+  /* Inner chart/list is content, not a separate tile */
+  .panel.glass-panel .meal-overview,
+  .panel.glass-panel .meal-donut,
+  .panel.glass-panel .meal-list {
+    transform: none !important;
+    box-shadow: none !important;
+    border-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.glass-panel, .hero-stat { transition: none !important; }
+}
