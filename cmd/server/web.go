@@ -10,6 +10,7 @@ import (
     "encoding/json"
     "fmt"
     "io"
+    "log"
     "net/url"
     "errors"
     "net/http"
