@@ -48,6 +48,7 @@ func main() {
     db.SetConnMaxLifetime(5 * time.Minute)
     if err = db.Ping(); err != nil { log.Fatal("database: ", err) }
     if err = runMigrations(db); err != nil { log.Fatal("migrations: ", err) }
+    if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS workers (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE CASCADE, name VARCHAR(120) NOT NULL, date_joined DATE NOT NULL, shift VARCHAR(40) NOT NULL, qr_token UUID NOT NULL UNIQUE DEFAULT uuid_generate_v4(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`); err != nil { log.Fatal("workers migration: ", err) }
     ttlHours, _ := strconv.Atoi(getenv("JWT_TTL_HOURS", "24"))
     app := &App{db: db, jwtSecret: []byte(jwtSecret), ttl: time.Duration(ttlHours)*time.Hour}
     mux := http.NewServeMux()
@@ -56,6 +57,9 @@ func main() {
     mux.HandleFunc("POST /api/v1/auth/login", app.login)
     mux.HandleFunc("GET /api/v1/dashboard", app.auth(app.dashboard))
     mux.HandleFunc("GET /api/v1/analytics", app.auth(app.monthlyAnalytics))
+    mux.HandleFunc("GET /api/v1/workers", app.auth(app.listWorkers))
+    mux.HandleFunc("POST /api/v1/workers", app.auth(app.createWorker))
+    mux.HandleFunc("GET /api/v1/workers/{id}/qr", app.auth(app.workerQR))
     mux.HandleFunc("GET /api/v1/consumers", app.auth(app.listConsumers))
     mux.HandleFunc("POST /api/v1/consumers", app.auth(app.createConsumer))
     mux.HandleFunc("GET /api/v1/consumers/{id}", app.auth(app.getConsumer))
@@ -216,6 +220,26 @@ func (a *App) updateConsumer(w http.ResponseWriter,r *http.Request){
     if err=tx.Commit();err!=nil{errorJSON(w,500,"could not save consumer");return};a.getConsumer(w,r)
 }
 func (a *App) deleteConsumer(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid consumer id");return};res,err:=a.db.Exec(`DELETE FROM consumers WHERE id=$1 AND owner_id=$2`,id,oid);if err!=nil{errorJSON(w,500,"database error");return};n,_:=res.RowsAffected();if n==0{errorJSON(w,404,"consumer not found");return};w.WriteHeader(http.StatusNoContent)}
+type workerRequest struct { Name string `json:"name"`; DateJoined string `json:"date_joined"`; Shift string `json:"shift"` }
+func (a *App) listWorkers(w http.ResponseWriter, r *http.Request) {
+ oid,err:=ownerID(r); if err!=nil { errorJSON(w,401,"authentication required"); return }
+ rows,err:=a.db.Query(`SELECT id,name,date_joined::text,shift,qr_token FROM workers WHERE owner_id=$1 ORDER BY created_at DESC`,oid); if err!=nil { errorJSON(w,500,"could not list workers"); return }; defer rows.Close()
+ out:=[]map[string]any{}; for rows.Next(){var id,token uuid.UUID;var name,dateJoined,shift string;if rows.Scan(&id,&name,&dateJoined,&shift,&token)!=nil{errorJSON(w,500,"could not read workers");return};out=append(out,map[string]any{"id":id,"name":name,"date_joined":dateJoined,"shift":shift,"qr_token":token})};writeJSON(w,200,out)
+}
+func (a *App) createWorker(w http.ResponseWriter, r *http.Request) {
+ oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return};var req workerRequest
+ if decode(r,&req)!=nil||strings.TrimSpace(req.Name)==""||req.Shift==""{errorJSON(w,400,"name, date_joined and shift are required");return}
+ joined,err:=time.Parse("2006-01-02",req.DateJoined);if err!=nil{errorJSON(w,400,"date_joined must be YYYY-MM-DD");return}
+ var id,token uuid.UUID;var dateJoined string
+ err=a.db.QueryRow(`INSERT INTO workers(owner_id,name,date_joined,shift) VALUES($1,$2,$3,$4) RETURNING id,qr_token,date_joined::text`,oid,strings.TrimSpace(req.Name),joined,strings.TrimSpace(req.Shift)).Scan(&id,&token,&dateJoined)
+ if err!=nil{errorJSON(w,500,"could not create worker");return};writeJSON(w,201,map[string]any{"id":id,"name":strings.TrimSpace(req.Name),"date_joined":dateJoined,"shift":req.Shift,"qr_token":token})
+}
+func (a *App) workerQR(w http.ResponseWriter,r *http.Request) {
+ oid,err:=ownerID(r);if err!=nil{errorJSON(w,401,"authentication required");return};id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid worker id");return}
+ var token uuid.UUID;var name,dateJoined,shift string
+ if err=a.db.QueryRow(`SELECT qr_token,name,date_joined::text,shift FROM workers WHERE id=$1 AND owner_id=$2`,id,oid).Scan(&token,&name,&dateJoined,&shift);err!=nil{errorJSON(w,404,"worker not found");return}
+ png,err:=qrcode.Encode(token.String(),qrcode.Medium,256);if err!=nil{errorJSON(w,500,"could not generate QR");return};writeJSON(w,200,map[string]any{"id":id,"name":name,"date_joined":dateJoined,"shift":shift,"qr_token":token,"format":"png","image_base64":base64.StdEncoding.EncodeToString(png)})
+}
 func (a *App) consumerQR(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid consumer id");return};var token uuid.UUID;var name,cid string;if err=a.db.QueryRow(`SELECT qr_token,name,consumer_id FROM consumers WHERE id=$1 AND owner_id=$2`,id,oid).Scan(&token,&name,&cid);err!=nil{errorJSON(w,404,"consumer not found");return};png,err:=qrcode.Encode(token.String(),qrcode.Medium,256);if err!=nil{errorJSON(w,500,"could not generate QR");return};writeJSON(w,200,map[string]any{"consumer_id":cid,"name":name,"qr_token":token,"format":"png","image_base64":base64.StdEncoding.EncodeToString(png)})}
 
 func (a *App) createSubscription(w http.ResponseWriter, r *http.Request) {
