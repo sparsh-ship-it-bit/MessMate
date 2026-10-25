@@ -43,9 +43,25 @@ function closeSplashAndShowApp() {
     splashWindow.close();
   }
   splashWindow = null;
-  if (mainWindow && !mainWindow.isDestroyed()) {
+
+  // Startup callbacks and the 30-second fallback can run after the user
+  // minimizes the main window. Never turn a backgrounded app back into
+  // a foreground window from an asynchronous startup callback.
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
     mainWindow.show();
   }
+}
+
+function hideSplash() {
+  if (splashTimer) {
+    clearTimeout(splashTimer);
+    splashTimer = null;
+  }
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.hide();
+    splashWindow.close();
+  }
+  splashWindow = null;
 }
 
 function createSplashWindow() {
@@ -67,7 +83,12 @@ function createSplashWindow() {
     }
   });
   splashWindow.once('ready-to-show', () => {
-    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+    // Do not show a splash window if the main window has already been
+    // minimized while the hosted app is starting.
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized() &&
+        splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.show();
+    }
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
 }
@@ -113,6 +134,7 @@ function createWindow() {
     // Do not reveal a half-loaded dashboard just because the HTML has painted.
     if (startupReady) closeSplashAndShowApp();
   });
+  mainWindow.on('minimize', hideSplash);
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.loadURL(APP_URL);
 }
