@@ -3,6 +3,7 @@ package main
 import (
     "bytes"
     "crypto/hmac"
+    "crypto/rand"
     "crypto/sha256"
     "database/sql"
     "encoding/base64"
@@ -28,6 +29,8 @@ import (
 // registerWeb serves the compiled React application from the same origin as the API.
 // Renewal is handled here because the standalone renewal UI calls these endpoints directly.
 func registerWeb(mux *http.ServeMux) {
+    mux.HandleFunc("POST /api/v1/auth/forgot-password", requestPasswordReset)
+    mux.HandleFunc("POST /api/v1/auth/reset-password", completePasswordReset)
     mux.HandleFunc("GET /api/v1/subscriptions/renew-info/{id}", renewalInfo)
     mux.HandleFunc("POST /api/v1/subscriptions/renew", renewSubscription)
     mux.HandleFunc("POST /api/v1/feedback", submitFeedback)
@@ -382,3 +385,87 @@ func fulfillPaymentIntentV2(intentID uuid.UUID,providerPayment string,providerAm
 }
 
 func absFloat(v float64)float64{if v<0{return -v};return v}
+
+type passwordResetRequest struct { Email string `json:"email"`; Token string `json:"token"`; Password string `json:"password"` }
+
+func requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+    r.Body = http.MaxBytesReader(w, r.Body, 8*1024)
+    var req passwordResetRequest
+    if decode(r, &req) != nil || strings.TrimSpace(req.Email) == "" || !strings.Contains(req.Email, "@") {
+        errorJSON(w, 400, "a valid email is required")
+        return
+    }
+    generic := map[string]string{"message":"If an account exists for this email, password reset instructions will be sent."}
+    // Do not reveal whether an email belongs to an account.
+    var ownerID string
+    err := resetDBQueryRow(r.Context(), strings.ToLower(strings.TrimSpace(req.Email))).Scan(&ownerID)
+    if err == sql.ErrNoRows { writeJSON(w, 200, generic); return }
+    if err != nil { log.Printf("password reset lookup failed: %v", err); errorJSON(w, 500, "could not process reset request"); return }
+    host, port := strings.TrimSpace(os.Getenv("SMTP_HOST")), getenv("SMTP_PORT", "587")
+    username, password := strings.TrimSpace(os.Getenv("SMTP_USERNAME")), os.Getenv("SMTP_PASSWORD")
+    from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
+    if host == "" || username == "" || password == "" || from == "" {
+        errorJSON(w, 503, "Password reset email is not configured yet. Please try again later.")
+        return
+    }
+    raw := make([]byte, 32)
+    if _, err := rand.Read(raw); err != nil { errorJSON(w, 500, "could not create reset link"); return }
+    token := base64.RawURLEncoding.EncodeToString(raw)
+    digest := sha256.Sum256([]byte(token))
+    tokenHash := hex.EncodeToString(digest[:])
+    // Use the shared application database; only a hash of the bearer token is stored.
+    if err := savePasswordResetToken(ownerID, tokenHash, time.Now().Add(30*time.Minute)); err != nil {
+        log.Printf("password reset token save failed: %v", err); errorJSON(w, 500, "could not create reset link"); return
+    }
+    baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_BASE_URL")), "/")
+    if baseURL == "" { baseURL = strings.TrimRight(strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")), "/") }
+    if baseURL == "" { baseURL = "https://messmate-zhms.onrender.com" }
+    link := baseURL + "/?reset_token=" + url.QueryEscape(token)
+    message := "From: MessMate <" + from + ">\r\nTo: " + strings.TrimSpace(req.Email) + "\r\nSubject: Reset your MessMate password\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nWe received a request to reset your MessMate password. This link expires in 30 minutes and can be used once:\r\n\r\n" + link + "\r\n\r\nIf you did not request this, you can ignore this email.\r\n"
+    auth := smtp.PlainAuth("", username, password, host)
+    if err := smtp.SendMail(host+":"+port, auth, from, []string{strings.TrimSpace(req.Email)}, []byte(message)); err != nil {
+        log.Printf("password reset email send failed: %v", err)
+        errorJSON(w, 502, "Could not send reset email right now. Please try again later.")
+        return
+    }
+    writeJSON(w, 200, generic)
+}
+
+var passwordResetDB *sql.DB
+
+func resetDBQueryRow(ctx context.Context, email string) *sql.Row {
+    return passwordResetDB.QueryRowContext(ctx, "SELECT id::text FROM owners WHERE lower(email)=$1", email)
+}
+func savePasswordResetToken(ownerID, tokenHash string, expires time.Time) error {
+    _, err := passwordResetDB.Exec("UPDATE password_reset_tokens SET used_at=NOW() WHERE owner_id=$1 AND used_at IS NULL", ownerID)
+    if err != nil { return err }
+    _, err = passwordResetDB.Exec("INSERT INTO password_reset_tokens(token_hash,owner_id,expires_at) VALUES($1,$2,$3)", tokenHash, ownerID, expires)
+    return err
+}
+func completePasswordReset(w http.ResponseWriter, r *http.Request) {
+    r.Body = http.MaxBytesReader(w, r.Body, 8*1024)
+    var req passwordResetRequest
+    if decode(r, &req) != nil || strings.TrimSpace(req.Token)=="" || len(req.Password)<8 {
+        errorJSON(w, 400, "valid reset token and a password of at least 8 characters are required")
+        return
+    }
+    digest := sha256.Sum256([]byte(req.Token))
+    tokenHash := hex.EncodeToString(digest[:])
+    var ownerID string
+    err := passwordResetDB.QueryRow("SELECT owner_id::text FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW()", tokenHash).Scan(&ownerID)
+    if err != nil { errorJSON(w, 400, "This reset link is invalid or expired. Request a new one."); return }
+    hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+    if err != nil { errorJSON(w, 500, "could not update password"); return }
+    tx, err := passwordResetDB.Begin()
+    if err != nil { errorJSON(w, 500, "could not update password"); return }
+    defer tx.Rollback()
+    res, err := tx.Exec("UPDATE password_reset_tokens SET used_at=NOW() WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW()", tokenHash)
+    if err != nil { errorJSON(w, 500, "could not update password"); return }
+    n, _ := res.RowsAffected()
+    if n != 1 { errorJSON(w, 400, "This reset link is invalid or expired. Request a new one."); return }
+    if _, err = tx.Exec("UPDATE owners SET password_hash=$1 WHERE id=$2", string(hash), ownerID); err != nil {
+        errorJSON(w, 500, "could not update password"); return
+    }
+    if err = tx.Commit(); err != nil { errorJSON(w, 500, "could not update password"); return }
+    writeJSON(w, 200, map[string]string{"message":"Password updated. You can now sign in with your new password."})
+}
