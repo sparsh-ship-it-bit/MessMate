@@ -8,6 +8,43 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (() => {
+        if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+        document.documentElement.classList.add('mm-custom-cursor');
+        const cursor = document.createElement('div');
+        cursor.id = 'mm-custom-cursor';
+        cursor.innerHTML = '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><defs><linearGradient id="mm-cursor-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#c6ff00"/><stop offset="55%" stop-color="#72f0a5"/><stop offset="100%" stop-color="#4dd0e1"/></linearGradient></defs><path d="M6 3.5 22 13.5 14.7 15 11 22.5 6 3.5Z"/></svg>';
+        document.body.appendChild(cursor);
+        let timer = 0;
+        let hovered = null;
+        const interactive = 'button,a,[role="button"],select,summary,label[for],.clickable,.nav,.panel,.card,.hero-stat,.stat-card,.consumer,.row,input,textarea';
+        document.addEventListener('pointermove', event => {
+          cursor.style.transform = `translate3d(${event.clientX}px,${event.clientY}px,0)`;
+          cursor.classList.add('mm-visible');
+          const target = event.target instanceof Element ? event.target.closest(interactive) : null;
+          if (target === hovered) return;
+          hovered = target;
+          clearTimeout(timer);
+          cursor.classList.remove('mm-filled');
+          if (target) timer = window.setTimeout(() => {
+            if (hovered === target) cursor.classList.add('mm-filled');
+          }, 250);
+        }, {passive:true});
+        document.addEventListener('pointerout', event => {
+          if (!event.relatedTarget) {
+            hovered = null;
+            clearTimeout(timer);
+            cursor.classList.remove('mm-filled','mm-visible');
+          }
+        }, {passive:true});
+        document.addEventListener('pointerdown', () => cursor.classList.remove('mm-filled'), {passive:true});
+        document.addEventListener('pointerup', event => {
+          const target = event.target instanceof Element ? event.target.closest(interactive) : null;
+          if (target) timer = window.setTimeout(() => { if (hovered === target) cursor.classList.add('mm-filled'); }, 250);
+        }, {passive:true});
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
     <script defer src="/renewal.js?v=6"></script>
   </body>
