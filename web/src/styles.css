@@ -204,3 +204,35 @@ html {
     cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M6 3.5 22 13.5 14.7 15 11 22.5 6 3.5Z' fill='none' stroke='%23c6ff00' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E") 6 4, pointer;
   }
 }
+
+
+/* Animated custom cursor: hollow by default, gradient-filled after a 250ms hover */
+@media (hover: hover) and (pointer: fine) {
+  html.mm-custom-cursor, html.mm-custom-cursor * { cursor: none !important; }
+  #mm-custom-cursor {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 28px;
+    height: 28px;
+    z-index: 2147483647;
+    pointer-events: none;
+    transform: translate3d(-100px,-100px,0);
+    will-change: transform;
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+  #mm-custom-cursor.mm-visible { opacity: 1; }
+  #mm-custom-cursor path {
+    fill: transparent;
+    stroke: #c6ff00;
+    stroke-width: 2.2;
+    stroke-linejoin: round;
+    transition: fill .18s ease, stroke .18s ease, filter .18s ease;
+  }
+  #mm-custom-cursor.mm-filled path {
+    fill: url(#mm-cursor-gradient);
+    stroke: #d8ff65;
+    filter: drop-shadow(0 0 4px rgba(198,255,0,.35));
+  }
+}
