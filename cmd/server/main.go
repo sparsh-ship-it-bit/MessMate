@@ -84,6 +84,8 @@ func main() {
     mux.HandleFunc("GET /api/v1/payments/recent", app.auth(app.recentPayments))
     mux.HandleFunc("POST /api/v1/payments", app.auth(app.createPayment))
     mux.HandleFunc("POST /api/v1/mobile/pairing", app.auth(app.createMobilePairing))
+    mux.HandleFunc("POST /api/v1/mobile/call", app.auth(app.requestMobileCall))
+    mux.HandleFunc("GET /api/v1/mobile/call-request", app.mobileCallRequest)
     mux.HandleFunc("POST /api/v1/mobile/pair", app.exchangeMobilePairing)
     mux.HandleFunc("POST /api/v1/mobile/scan", app.mobileScan)
     mux.HandleFunc("POST /api/v1/mobile/worker-scan", app.mobileWorkerScan)
