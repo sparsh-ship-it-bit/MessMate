@@ -1,6 +1,7 @@
 package main
 
 import (
+  "database/sql"
   "crypto/rand"
   "crypto/sha256"
   "encoding/hex"
