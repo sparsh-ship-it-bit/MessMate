@@ -1,6 +1,6 @@
 {
   "name": "messmate-desktop",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "MessMate Windows desktop app",
   "private": true,
   "main": "main.cjs",
