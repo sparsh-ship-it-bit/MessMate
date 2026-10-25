@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "MessMate — Mess Management",
+  "short_name": "MessMate",
+  "description": "Mess management, subscriptions, attendance and payments.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#050805",
+  "theme_color": "#c6ff00",
+  "icons": [
+    {
+      "src": "/favicon.svg?v=3",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/mobile-icon.svg?v=3",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
