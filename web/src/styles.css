@@ -238,11 +238,9 @@ html {
 }
 
 
-/* Subtle lift-and-glow interaction for dashboard tiles and cards */
+/* Restrained lift-and-glow only on actual dashboard tiles, not layout wrappers */
 @media (hover: hover) and (pointer: fine) {
   .hero-stat,
-  .panel,
-  .dash-hero,
   .attendance-card,
   .stat-card,
   .summary-card,
@@ -253,25 +251,23 @@ html {
     transform: translateY(0);
   }
   .hero-stat:hover,
-  .panel:hover,
-  .dash-hero:hover,
   .attendance-card:hover,
   .stat-card:hover,
   .summary-card:hover,
   .consumer-card:hover,
   .payment-card:hover,
   .metric-card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(198,255,0,.42);
-    box-shadow: 0 18px 42px rgba(0,0,0,.32), 0 0 0 1px rgba(198,255,0,.06), 0 8px 26px rgba(198,255,0,.07);
+    transform: translateY(-3px);
+    border-color: rgba(198,255,0,.32);
+    box-shadow: 0 14px 32px rgba(0,0,0,.28), 0 5px 18px rgba(198,255,0,.055);
   }
   .hero-stat:hover:after {
     background: rgba(198,255,0,.12);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-stat, .panel, .dash-hero, .attendance-card, .stat-card,
-  .summary-card, .consumer-card, .payment-card, .metric-card {
+  .hero-stat, .attendance-card, .stat-card, .summary-card,
+  .consumer-card, .payment-card, .metric-card {
     transition: none !important;
   }
 }
