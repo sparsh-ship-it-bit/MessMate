@@ -114,23 +114,21 @@ func (a *App) mobileWorkerScan(w http.ResponseWriter,r *http.Request) {
  var req mobileWorkerScanRequest
  if decode(r,&req)!=nil||strings.TrimSpace(req.Value)==""{errorJSON(w,400,"scan a worker QR code or enter a worker QR token");return}
  value:=strings.TrimSpace(req.Value)
- var workerID,qrToken uuid.UUID;var name,shift string
- if parsed,e:=uuid.Parse(value);e==nil { err=a.db.QueryRow(`SELECT id,qr_token,name,shift FROM workers WHERE owner_id=$1 AND (qr_token=$2 OR id=$2) LIMIT 1`,owner,parsed).Scan(&workerID,&qrToken,&name,&shift) } else { err=fmt.Errorf("invalid worker QR token") }
+ parsed,e:=uuid.Parse(value);if e!=nil{errorJSON(w,400,"invalid worker QR token");return}
+ var workerID uuid.UUID;var name,shift string
+ err=a.db.QueryRow(`SELECT id,name,shift FROM workers WHERE owner_id=$1 AND (qr_token=$2 OR id=$2) LIMIT 1`,owner,parsed).Scan(&workerID,&name,&shift)
  if err!=nil{errorJSON(w,404,"worker not found; scan the worker's unique QR code");return}
- var attendanceID uuid.UUID;var inTime time.Time;var outTime sql.NullTime
- err=a.db.QueryRow(`INSERT INTO worker_attendance(worker_id,attendance_date,shift) VALUES($1,(NOW() AT TIME ZONE 'Asia/Kolkata')::date,$2) ON CONFLICT(worker_id,attendance_date) DO UPDATE SET out_time=NOW() WHERE worker_attendance.out_time IS NULL RETURNING id,scanned_at,out_time`,workerID,shift).Scan(&attendanceID,&inTime,&outTime)
- if err!=nil{errorJSON(w,409,"worker has already checked in and out today");return}
- status:="IN recorded";var minutes int64
- if outTime.Valid { status="OUT recorded";minutes=int64(outTime.Time.Sub(inTime).Minutes());if minutes<0{minutes=0} }
- writeJSON(w,200,map[string]any{"attendance_id":attendanceID,"worker_id":workerID,"name":name,"shift":shift,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})
+ result,err:=a.recordWorkerAttendance(workerID,shift);if err!=nil{errorJSON(w,500,"could not record worker attendance");return}
+ result["worker_id"]=workerID;result["name"]=name;result["shift"]=shift
+ writeJSON(w,200,result)
 }
 
 func (a *App) mobileTodayWorkerAttendance(w http.ResponseWriter,r *http.Request) {
  owner,err:=mobileDeviceOwner(a,r);if err!=nil{errorJSON(w,401,"phone pairing expired or disconnected; pair again from desktop");return}
- rows,err:=a.db.Query(`SELECT w.id,w.name,w.shift,wa.scanned_at,wa.out_time,GREATEST(0,COALESCE(EXTRACT(EPOCH FROM (wa.out_time-wa.scanned_at))/60,0))::bigint FROM worker_attendance wa JOIN workers w ON w.id=wa.worker_id WHERE w.owner_id=$1 AND wa.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY wa.scanned_at DESC`,owner)
+ rows,err:=a.db.Query(`SELECT w.id,w.name,w.shift,MAX(s.in_time),MAX(s.out_time),COALESCE(SUM(GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(s.out_time,NOW())-s.in_time))/60)),0)::bigint,BOOL_OR(s.out_time IS NULL) FROM workers w JOIN worker_attendance_sessions s ON s.worker_id=w.id WHERE w.owner_id=$1 AND s.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date GROUP BY w.id,w.name,w.shift ORDER BY MAX(s.in_time) DESC`,owner)
  if err!=nil{errorJSON(w,500,"could not load worker attendance");return};defer rows.Close()
  out:=[]map[string]any{}
- for rows.Next(){var id uuid.UUID;var name,shift string;var inTime time.Time;var outTime sql.NullTime;var minutes int64;if rows.Scan(&id,&name,&shift,&inTime,&outTime,&minutes)==nil{status:="in";if outTime.Valid{status="out"};out=append(out,map[string]any{"worker_id":id,"name":name,"shift":shift,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})}}
+ for rows.Next(){var id uuid.UUID;var name,shift string;var inTime time.Time;var outTime sql.NullTime;var total int64;var onShift bool;if rows.Scan(&id,&name,&shift,&inTime,&outTime,&total,&onShift)==nil{status:="out";if onShift{status="in"};out=append(out,map[string]any{"worker_id":id,"name":name,"shift":shift,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":total,"total_worked_minutes":total,"status":status})}}
  writeJSON(w,200,out)
 }
 
@@ -139,10 +137,10 @@ func (a *App) mobileWorkerAttendanceHistory(w http.ResponseWriter,r *http.Reques
  id,err:=uuid.Parse(r.PathValue("id"));if err!=nil{errorJSON(w,400,"invalid worker id");return}
  var name,shift string
  if err=a.db.QueryRow("SELECT name,shift FROM workers WHERE id=$1 AND owner_id=$2",id,owner).Scan(&name,&shift);err!=nil{errorJSON(w,404,"worker not found");return}
- rows,err:=a.db.Query(`SELECT attendance_date::text,scanned_at,out_time,GREATEST(0,COALESCE(EXTRACT(EPOCH FROM (out_time-scanned_at))/60,0))::bigint FROM worker_attendance WHERE worker_id=$1 ORDER BY attendance_date DESC LIMIT 90`,id)
+ rows,err:=a.db.Query(`SELECT attendance_date::text,MIN(in_time),MAX(out_time),COALESCE(SUM(GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(out_time,NOW())-in_time))/60)),0)::bigint,COUNT(*) FROM worker_attendance_sessions WHERE worker_id=$1 GROUP BY attendance_date ORDER BY attendance_date DESC LIMIT 90`,id)
  if err!=nil{errorJSON(w,500,"could not load worker history");return};defer rows.Close()
  days:=[]map[string]any{}
- for rows.Next(){var date string;var inTime time.Time;var outTime sql.NullTime;var minutes int64;if rows.Scan(&date,&inTime,&outTime,&minutes)==nil{status:="in";if outTime.Valid{status="out"};days=append(days,map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":status})}}
+ for rows.Next(){var date string;var inTime time.Time;var outTime sql.NullTime;var total int64;var sessions int;if rows.Scan(&date,&inTime,&outTime,&total,&sessions)==nil{days=append(days,map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":total,"total_worked_minutes":total,"sessions":sessions,"status":"summary"})}}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
 }
 
