@@ -24,6 +24,7 @@ import (
     "github.com/google/uuid"
     _ "github.com/lib/pq"
     "github.com/skip2/go-qrcode"
+    "golang.org/x/crypto/bcrypt"
 )
 
 // registerWeb serves the compiled React application from the same origin as the API.
