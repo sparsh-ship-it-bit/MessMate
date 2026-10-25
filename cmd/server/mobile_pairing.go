@@ -162,3 +162,41 @@ func (a *App) mobileListWorkers(w http.ResponseWriter,r *http.Request) {
  for rows.Next(){var id uuid.UUID;var name,dateJoined,shift string;if rows.Scan(&id,&name,&dateJoined,&shift)==nil{out=append(out,map[string]any{"id":id,"name":name,"date_joined":dateJoined,"shift":shift})}}
  writeJSON(w,200,out)
 }
+
+
+type mobileCallRequestPayload struct { ConsumerID string `json:"consumer_id"` }
+
+// requestMobileCall queues a short-lived call request for the owner's connected paired phone.
+func (a *App) requestMobileCall(w http.ResponseWriter, r *http.Request) {
+    oid, err := ownerID(r)
+    if err != nil { errorJSON(w, 401, "authentication required"); return }
+    var req mobileCallRequestPayload
+    if decode(r, &req) != nil { errorJSON(w, 400, "consumer is required"); return }
+    consumerID, err := uuid.Parse(strings.TrimSpace(req.ConsumerID))
+    if err != nil { errorJSON(w, 400, "invalid consumer"); return }
+    var name, phone string
+    err = a.db.QueryRow(`SELECT name, phone FROM consumers WHERE id=$1 AND owner_id=$2`, consumerID, oid).Scan(&name, &phone)
+    if err != nil { errorJSON(w, 404, "consumer not found"); return }
+    phone = strings.TrimSpace(phone)
+    if phone == "" { errorJSON(w, 400, "this consumer has no phone number saved"); return }
+    var pairingID uuid.UUID
+    err = a.db.QueryRow(`SELECT id FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days' AND last_seen_at>NOW()-INTERVAL '15 seconds' ORDER BY last_seen_at DESC LIMIT 1`, oid).Scan(&pairingID)
+    if err != nil { errorJSON(w, 409, "phone is not connected. Open MessMate on the paired phone and reconnect it."); return }
+    _, err = a.db.Exec(`INSERT INTO mobile_call_requests(owner_id,pairing_id,consumer_id,consumer_name,phone,expires_at) VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL '45 seconds')`, oid, pairingID, consumerID, name, phone)
+    if err != nil { errorJSON(w, 500, "could not send call request to phone"); return }
+    writeJSON(w, 202, map[string]any{"message":"Call request sent to your connected phone. The phone will open its dialer.", "consumer_name":name})
+}
+
+// mobileCallRequest delivers a queued call once to the paired phone companion.
+func (a *App) mobileCallRequest(w http.ResponseWriter, r *http.Request) {
+    token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+    if token == "" { errorJSON(w, 401, "device is not paired"); return }
+    var pairingID uuid.UUID
+    err := a.db.QueryRow(`SELECT id FROM mobile_pairings WHERE device_token_hash=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days' AND last_seen_at>NOW()-INTERVAL '15 seconds' LIMIT 1`, hashPairSecret(token)).Scan(&pairingID)
+    if err != nil { errorJSON(w, 401, "phone is disconnected; reconnect from desktop"); return }
+    var consumerName, phone string
+    err = a.db.QueryRow(`UPDATE mobile_call_requests SET status='delivered', delivered_at=NOW() WHERE id=(SELECT id FROM mobile_call_requests WHERE pairing_id=$1 AND status='pending' AND expires_at>NOW() ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING consumer_name, phone`, pairingID).Scan(&consumerName, &phone)
+    if err == sql.ErrNoRows { writeJSON(w, 200, map[string]any{"pending":false}); return }
+    if err != nil { errorJSON(w, 500, "could not check call requests"); return }
+    writeJSON(w, 200, map[string]any{"pending":true, "consumer_name":consumerName, "phone":phone})
+}
