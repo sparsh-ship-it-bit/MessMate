@@ -26,6 +26,7 @@ import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.JavascriptInterface
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.widget.Toast
@@ -87,6 +88,23 @@ class MainActivity : AppCompatActivity() {
         webView.settings.mediaPlaybackRequiresUserGesture = true
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun dialPhone(number: String) {
+                runOnUiThread {
+                    val cleaned = number.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                    if (cleaned.isBlank() || cleaned.none { it.isDigit() }) {
+                        Toast.makeText(this@MainActivity, "Invalid phone number.", Toast.LENGTH_SHORT).show()
+                        return@runOnUiThread
+                    }
+                    try {
+                        startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(cleaned))))
+                    } catch (_: Exception) {
+                        Toast.makeText(this@MainActivity, "No phone dialer is available.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }, "MessMateNative")
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
