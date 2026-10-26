@@ -329,7 +329,9 @@ class MainActivity : AppCompatActivity() {
         ))
         setContentView(root)
         startNovaBluetooth()
-        if (savedInstanceState == null) webView.loadUrl(APP_URL) else webView.restoreState(savedInstanceState)
+        if (savedInstanceState == null) {
+            webView.loadUrl(if (intent?.data?.scheme == "messmate" && intent?.data?.host == "nova-link") "$APP_URL?remote=1" else APP_URL)
+        } else webView.restoreState(savedInstanceState)
         checkForUpdate()
     }
 
@@ -550,6 +552,14 @@ class MainActivity : AppCompatActivity() {
         if (::webView.isInitialized && webView.url?.startsWith(APP_URL) == true) webView.reload()
         val pending = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getLong(PENDING_DOWNLOAD_ID, -1L)
         if (pending >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.canRequestPackageInstalls()) installDownloadedUpdate(pending)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.data?.scheme == "messmate" && intent.data?.host == "nova-link" && ::webView.isInitialized) {
+            webView.loadUrl("$APP_URL?remote=1")
+        }
     }
 
     override fun onBackPressed() {
