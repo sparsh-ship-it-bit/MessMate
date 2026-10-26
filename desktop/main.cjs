@@ -115,6 +115,30 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
+    event.preventDefault();
+    if (!devices || devices.length === 0) {
+      callback('');
+      return;
+    }
+    const labels = devices.map((device, index) => {
+      const name = String(device.deviceName || '').trim();
+      return name ? name + ' (' + (index + 1) + ')' : 'Nearby Bluetooth device ' + (index + 1);
+    });
+    dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Nova Link · Bluetooth',
+      message: 'Select the Android phone running MessMate Nova Link.',
+      detail: 'Keep Nova Link open on your phone and allow Bluetooth access when prompted.',
+      buttons: [...labels, 'Cancel'],
+      cancelId: labels.length,
+      defaultId: 0,
+      noLink: true
+    }).then(({ response }) => {
+      callback(response >= 0 && response < devices.length ? devices[response].deviceId : '');
+    }).catch(() => callback(''));
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (!isTrustedUrl(url) && url.startsWith('https://')) {
       shell.openExternal(url);
