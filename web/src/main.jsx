@@ -47,6 +47,7 @@ function Attendance({attendance,workerAttendance,onScan,onWorkerScan}){
  const [meal,setMeal]=useState('lunch');
  const [token,setToken]=useState('');
  const [scanner,setScanner]=useState(null);
+ const scannerRef=useRef(null);
  const [scanBusy,setScanBusy]=useState(false);
  const [scanFeedback,setScanFeedback]=useState('');
  const scanLock=useRef(false);
@@ -71,16 +72,17 @@ function Attendance({attendance,workerAttendance,onScan,onWorkerScan}){
   const q=new Html5Qrcode('messmate-reader');
   try{
    await q.start({facingMode:'environment'},{fps:10,qrbox:240},text=>{void mark(text)},()=>{});
-   setScanner(q);setScanFeedback('Scanner is open. Scan each QR code; it will stay open until you close it.');
+   scannerRef.current=q;setScanner(q);setScanFeedback('Scanner is open. Scan each QR code; it will stay open until you close it.');
   }catch{
    setScanFeedback('Could not open camera. Check camera permission and try again.');
    try{await q.stop()}catch{}
   }
  };
  const stop=async()=>{
-  if(scanner){try{await scanner.stop();await scanner.clear()}catch{}setScanner(null);setScanFeedback('Camera scanner closed.')}
+  const active=scannerRef.current;
+  if(active){scannerRef.current=null;try{if(active.isScanning)await active.stop();await active.clear()}catch{}setScanner(null);setScanFeedback('Camera scanner closed.')}
  };
- useEffect(()=>()=>{if(scanner)scanner.stop().catch(()=>{})},[scanner]);
+ useEffect(()=>()=>{const active=scannerRef.current;if(active){scannerRef.current=null;active.stop().catch(()=>{})}},[]);
  const counts=meals.reduce((m,x)=>(m[x]=attendance.filter(a=>a.meal===x).length,m),{});
  const duration=m=>Math.floor(Number(m||0)/60)+'h '+String(Number(m||0)%60).padStart(2,'0')+'m';
  return <div className="grid">
