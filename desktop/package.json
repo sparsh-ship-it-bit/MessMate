@@ -75,6 +75,15 @@
           "*.dll",
           "*.json"
         ]
+      },
+      {
+        "from": "native/out",
+        "to": "native",
+        "filter": [
+          "NovaBleHost.exe",
+          "*.dll",
+          "*.json"
+        ]
       }
     ]
   }
