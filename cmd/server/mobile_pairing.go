@@ -182,6 +182,8 @@ func (a *App) requestMobileCall(w http.ResponseWriter, r *http.Request) {
     var pairingID uuid.UUID
     err = a.db.QueryRow(`SELECT id FROM mobile_pairings WHERE owner_id=$1 AND paired_at IS NOT NULL AND revoked_at IS NULL AND paired_at>NOW()-INTERVAL '30 days' AND last_seen_at>NOW()-INTERVAL '15 seconds' ORDER BY last_seen_at DESC LIMIT 1`, oid).Scan(&pairingID)
     if err != nil { errorJSON(w, 409, "phone is not connected. Open MessMate on the paired phone and reconnect it."); return }
+    _, err = a.db.Exec(`UPDATE mobile_call_requests SET status='superseded' WHERE pairing_id=$1 AND status='pending'`, pairingID)
+    if err != nil { errorJSON(w, 500, "could not replace previous call request"); return }
     _, err = a.db.Exec(`INSERT INTO mobile_call_requests(owner_id,pairing_id,consumer_id,consumer_name,phone,expires_at) VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL '45 seconds')`, oid, pairingID, consumerID, name, phone)
     if err != nil { errorJSON(w, 500, "could not send call request to phone"); return }
     writeJSON(w, 202, map[string]any{"message":"Call request sent to your connected phone. The phone will open its dialer.", "consumer_name":name})
