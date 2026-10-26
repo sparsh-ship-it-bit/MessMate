@@ -1,6 +1,20 @@
 package com.messmate.mobile
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattServer
+import android.bluetooth.BluetoothGattServerCallback
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothGattService
+import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.AdvertiseData
+import android.bluetooth.le.AdvertiseSettings
+import android.os.ParcelUuid
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -45,6 +59,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashOverlay: FrameLayout
     private var pendingWebPermission: PermissionRequest? = null
     private var checkingUpdate = false
+    private var novaGattServer: BluetoothGattServer? = null
+    private var novaCharacteristic: BluetoothGattCharacteristic? = null
+    private val novaConnectedDevices = mutableSetOf<BluetoothDevice>()
 
     private val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -89,6 +106,24 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
         webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun sendNovaCommand(commandJson: String): Boolean {
+                return try {
+                    val payload = commandJson.toByteArray(Charsets.UTF_8)
+                    if (payload.size > 480) return false
+                    val characteristic = novaCharacteristic ?: return false
+                    runOnUiThread {
+                        characteristic.value = payload
+                        novaConnectedDevices.toList().forEach { device ->
+                            if (Build.VERSION.SDK_INT >= 33) novaGattServer?.notifyCharacteristicChanged(device, characteristic, false)
+                            else @Suppress("DEPRECATION") novaGattServer?.notifyCharacteristicChanged(device, characteristic, false)
+                        }
+                    }
+                    novaConnectedDevices.isNotEmpty()
+                } catch (_: Exception) { false }
+            }
+            @JavascriptInterface
+            fun novaLinkStatus(): String = if (novaConnectedDevices.isNotEmpty()) "connected" else "advertising"
             @JavascriptInterface
             fun dialPhone(number: String) {
                 runOnUiThread {
@@ -201,8 +236,67 @@ class MainActivity : AppCompatActivity() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
         setContentView(root)
+        startNovaBluetooth()
         if (savedInstanceState == null) webView.loadUrl(APP_URL) else webView.restoreState(savedInstanceState)
         checkForUpdate()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startNovaBluetooth() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val needed = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
+            val missing = needed.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+            if (missing.isNotEmpty()) {
+                requestPermissions(missing.toTypedArray(), 7401)
+                return
+            }
+        }
+        try {
+            val manager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+            val adapter = manager.adapter ?: return
+            if (!adapter.isEnabled) return
+            val service = BluetoothGattService(NOVA_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            val characteristic = BluetoothGattCharacteristic(
+                NOVA_COMMAND_UUID,
+                BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+                BluetoothGattCharacteristic.PERMISSION_READ
+            )
+            characteristic.addDescriptor(android.bluetooth.BluetoothGattDescriptor(
+                NOVA_CCCD_UUID,
+                android.bluetooth.BluetoothGattDescriptor.PERMISSION_READ or android.bluetooth.BluetoothGattDescriptor.PERMISSION_WRITE
+            ))
+            service.addCharacteristic(characteristic)
+            novaCharacteristic = characteristic
+            novaGattServer = manager.openGattServer(this, object : BluetoothGattServerCallback() {
+                override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+                    if (newState == BluetoothProfile.STATE_CONNECTED) novaConnectedDevices.add(device)
+                    else novaConnectedDevices.remove(device)
+                }
+                override fun onDescriptorWriteRequest(device: BluetoothDevice, requestId: Int, descriptor: android.bluetooth.BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
+                    descriptor.value = value
+                    if (responseNeeded) novaGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                }
+                override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
+                    val value = characteristic.value ?: byteArrayOf()
+                    if (offset <= value.size) novaGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value.copyOfRange(offset, value.size))
+                    else novaGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null)
+                }
+            })
+            novaGattServer?.addService(service)
+            val advertiser = adapter.bluetoothLeAdvertiser ?: return
+            advertiser.startAdvertising(
+                AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY).setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).setConnectable(true).build(),
+                AdvertiseData.Builder().setIncludeDeviceName(false).addServiceUuid(ParcelUuid(NOVA_SERVICE_UUID)).build(),
+                object : AdvertiseCallback() {
+                    override fun onStartSuccess(settingsInEffect: AdvertiseSettings) { runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-status',{detail:'advertising'}))", null) } }
+                    override fun onStartFailure(errorCode: Int) { runOnUiThread { Toast.makeText(this@MainActivity, "Nova Link Bluetooth could not start ($errorCode).", Toast.LENGTH_LONG).show() } }
+                }
+            )
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Allow Bluetooth permissions to use Nova Link.", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Nova Link Bluetooth is unavailable on this phone.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -340,14 +434,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         try { unregisterReceiver(updateReceiver) } catch (_: Exception) { }
+        try { novaGattServer?.close() } catch (_: Exception) { }
         if (::webView.isInitialized) {
-            webView.stopLoading()
+            webView.stopLoading
             webView.destroy()
         }
         super.onDestroy()
     }
 
     companion object {
+        private val NOVA_SERVICE_UUID: java.util.UUID = java.util.UUID.fromString("9b2d1000-4a7f-4c33-9b12-4d4553534d41")
+        private val NOVA_COMMAND_UUID: java.util.UUID = java.util.UUID.fromString("9b2d1001-4a7f-4c33-9b12-4d4553534d41")
+        private val NOVA_CCCD_UUID: java.util.UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val TRUSTED_HOST = "messmate-zhms.onrender.com"
         private const val APP_URL = "https://messmate-zhms.onrender.com/mobile-scan.html"
         private const val LATEST_RELEASE_API = "https://api.github.com/repos/sparsh-ship-it-bit/MessMate/releases?per_page=20"
