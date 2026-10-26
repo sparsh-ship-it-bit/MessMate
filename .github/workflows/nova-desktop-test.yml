@@ -1,0 +1,40 @@
+name: Nova Link compatibility tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'android/**'
+      - 'web/src/main.jsx'
+      - '.github/workflows/nova-desktop-test.yml'
+  workflow_dispatch:
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate desktop JavaScript
+        working-directory: desktop
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+      - name: Build Windows BLE host
+        working-directory: desktop
+        run: npm run build:nova
+      - name: Build Windows installer
+        working-directory: desktop
+        run: npm run dist:win
