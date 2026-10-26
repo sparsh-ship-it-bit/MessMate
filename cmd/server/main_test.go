@@ -38,10 +38,8 @@ func TestValidEmailAddress(t *testing.T) {
 }
 
 func TestForgotPasswordRejectsInvalidEmailBeforeDatabaseAccess(t *testing.T) {
-    req := httptest.NewRequest("POST", "/api/v1/auth/forgot-password", strings.NewReader(
-        `{"email":"owner@example.com
-Bcc: attacker@example.com"}`,
-    ))
+    body := "{\"email\":\"owner@example.com\\r\\nBcc: attacker@example.com\"}"
+    req := httptest.NewRequest("POST", "/api/v1/auth/forgot-password", strings.NewReader(body))
     rr := httptest.NewRecorder()
     requestPasswordReset(nil, rr, req)
     if rr.Code != 400 {
