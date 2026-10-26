@@ -1,6 +1,6 @@
 {
   "name": "messmate-desktop",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "MessMate Windows desktop app",
   "private": true,
   "main": "main.cjs",
@@ -67,15 +67,6 @@
       }
     ],
     "extraResources": [
-      {
-        "from": "native/out",
-        "to": "native",
-        "filter": [
-          "NovaBleHost.exe",
-          "*.dll",
-          "*.json"
-        ]
-      },
       {
         "from": "native/out",
         "to": "native",
