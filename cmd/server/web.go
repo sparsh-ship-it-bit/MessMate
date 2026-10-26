@@ -15,6 +15,7 @@ import (
     "net/url"
     "errors"
     "net/http"
+    "net/mail"
     "net/smtp"
     "os"
     "strings"
@@ -389,10 +390,21 @@ func absFloat(v float64)float64{if v<0{return -v};return v}
 
 type passwordResetRequest struct { Email string `json:"email"`; Token string `json:"token"`; Password string `json:"password"` }
 
+func validEmailAddress(value string) bool {
+    value = strings.TrimSpace(value)
+    if value == "" || strings.ContainsAny(value, "
+") {
+        return false
+    }
+    parsed, err := mail.ParseAddress(value)
+    return err == nil && parsed.Address == value && !strings.ContainsAny(parsed.Address, "
+")
+}
+
 func requestPasswordReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
     r.Body = http.MaxBytesReader(w, r.Body, 8*1024)
     var req passwordResetRequest
-    if decode(r, &req) != nil || strings.TrimSpace(req.Email) == "" || !strings.Contains(req.Email, "@") {
+    if decode(r, &req) != nil || !validEmailAddress(req.Email) {
         errorJSON(w, 400, "a valid email is required")
         return
     }
@@ -405,7 +417,7 @@ func requestPasswordReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
     host, port := strings.TrimSpace(os.Getenv("SMTP_HOST")), getenv("SMTP_PORT", "587")
     username, password := strings.TrimSpace(os.Getenv("SMTP_USERNAME")), os.Getenv("SMTP_PASSWORD")
     from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
-    if host == "" || username == "" || password == "" || from == "" {
+    if host == "" || username == "" || password == "" || !validEmailAddress(from) {
         errorJSON(w, 503, "Password reset email is not configured yet. Please try again later.")
         return
     }
