@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('messMateDesktop', {
   getVersion: () => ipcRenderer.invoke('messmate:get-version'),
   getNovaStatus: () => ipcRenderer.invoke('messmate:nova-status'),
   getNovaDiagnostics: () => ipcRenderer.invoke('messmate:nova-diagnostics'),
+  restartNovaHost: () => ipcRenderer.invoke('messmate:nova-restart'),
   onNovaCommand: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, command) => callback(command);
