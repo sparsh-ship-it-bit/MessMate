@@ -117,8 +117,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         characteristic.value = payload
                         novaConnectedDevices.toList().forEach { device ->
-                            if (Build.VERSION.SDK_INT >= 33) novaGattServer?.notifyCharacteristicChanged(device, characteristic, false)
-                            else @Suppress("DEPRECATION") novaGattServer?.notifyCharacteristicChanged(device, characteristic, false)
+                            notifyNovaCharacteristic(device, characteristic)
                         }
                     }
                     novaConnectedDevices.isNotEmpty()
@@ -241,6 +240,12 @@ class MainActivity : AppCompatActivity() {
         startNovaBluetooth()
         if (savedInstanceState == null) webView.loadUrl(APP_URL) else webView.restoreState(savedInstanceState)
         checkForUpdate()
+    }
+
+    @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
+    private fun notifyNovaCharacteristic(device: BluetoothDevice, characteristic: BluetoothGattCharacteristic) {
+        novaGattServer?.notifyCharacteristicChanged(device, characteristic, false)
     }
 
     @SuppressLint("MissingPermission")
