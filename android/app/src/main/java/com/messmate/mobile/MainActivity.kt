@@ -456,7 +456,7 @@ class MainActivity : AppCompatActivity() {
         try { unregisterReceiver(updateReceiver) } catch (_: Exception) { }
         try { novaGattServer?.close() } catch (_: Exception) { }
         if (::webView.isInitialized) {
-            webView.stopLoading
+            webView.stopLoading()
             webView.destroy()
         }
         super.onDestroy()
