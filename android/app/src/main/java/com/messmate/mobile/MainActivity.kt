@@ -171,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     novaScanCallback = callback
-                    scanner.startScan(settings, callback)
+                    scanner.startScan(null, settings, callback)
                     runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-scan-started'))", null) }
                     true
                 } catch (_: Exception) { false }
