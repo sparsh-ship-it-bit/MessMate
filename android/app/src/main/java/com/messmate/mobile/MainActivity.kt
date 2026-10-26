@@ -239,6 +239,12 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
+                if (uri.scheme == "messmate" && uri.host == "nova-link") {
+                    // Handle the web fallback inside the native activity instead of
+                    // letting WebView block the custom scheme without opening anything.
+                    view.post { view.loadUrl("$APP_URL?remote=1") }
+                    return true
+                }
                 if (uri.scheme == "tel") {
                     try { startActivity(Intent(Intent.ACTION_DIAL, uri)) }
                     catch (_: Exception) { Toast.makeText(this@MainActivity, "No phone dialer is available.", Toast.LENGTH_LONG).show() }
