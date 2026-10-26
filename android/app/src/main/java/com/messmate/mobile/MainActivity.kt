@@ -114,6 +114,10 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = false
         webView.addJavascriptInterface(object {
             @JavascriptInterface
+            fun openNovaLink() {
+                runOnUiThread { if (::webView.isInitialized) webView.loadUrl("$APP_URL?remote=1") }
+            }
+            @JavascriptInterface
             fun sendNovaCommand(commandJson: String): Boolean {
                 return try {
                     val action = JSONObject(commandJson).optString("action", "").trim()
