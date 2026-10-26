@@ -40,8 +40,8 @@ android {
         applicationId = "com.messmate.mobile"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1000007
-        versionName = "1.0.7"
+        versionCode = 1000016
+        versionName = "1.0.16"
     }
 
     compileOptions {
