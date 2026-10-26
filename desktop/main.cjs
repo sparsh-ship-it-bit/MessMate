@@ -167,7 +167,7 @@ app.whenReady().then(() => {
   // Allow camera access for the trusted HTTPS app so QR attendance scanning can work.
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const trustedPage = isTrustedUrl(webContents.getURL());
-    callback(trustedPage && ['media', 'notifications'].includes(permission));
+    callback(trustedPage && ['media', 'notifications', 'bluetooth'].includes(permission));
   });
 
   ipcMain.handle('messmate:get-version', () => app.getVersion());
