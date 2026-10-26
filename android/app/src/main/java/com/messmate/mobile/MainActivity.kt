@@ -261,7 +261,10 @@ class MainActivity : AppCompatActivity() {
         try {
             val manager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = manager.adapter ?: return
-            if (!adapter.isEnabled) return
+            if (!adapter.isEnabled) {
+                startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                return
+            }
             val service = BluetoothGattService(NOVA_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
             val characteristic = BluetoothGattCharacteristic(
                 NOVA_COMMAND_UUID,
@@ -452,6 +455,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::webView.isInitialized && novaGattServer == null) startNovaBluetooth()
         if (::webView.isInitialized && webView.url?.startsWith(APP_URL) == true) webView.reload()
         val pending = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getLong(PENDING_DOWNLOAD_ID, -1L)
         if (pending >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.canRequestPackageInstalls()) installDownloadedUpdate(pending)
