@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('messMateDesktop', {
     ipcRenderer.on('messmate:nova-command', listener);
     return () => ipcRenderer.removeListener('messmate:nova-command', listener);
   },
+  getNovaStatus: () => ipcRenderer.invoke('messmate:nova-status'),
+  onNovaCommand: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('messmate:nova-command', listener);
+    return () => ipcRenderer.removeListener('messmate:nova-command', listener);
+  },
   signalAppReady: () => ipcRenderer.send('messmate:app-ready'),
   checkForUpdates: () => ipcRenderer.invoke('messmate:check-updates'),
   onUpdateStatus: (callback) => {
