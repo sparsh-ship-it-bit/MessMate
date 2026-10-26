@@ -392,13 +392,11 @@ type passwordResetRequest struct { Email string `json:"email"`; Token string `js
 
 func validEmailAddress(value string) bool {
     value = strings.TrimSpace(value)
-    if value == "" || strings.ContainsAny(value, "
-") {
+    if value == "" || strings.ContainsAny(value, "\r\n") {
         return false
     }
     parsed, err := mail.ParseAddress(value)
-    return err == nil && parsed.Address == value && !strings.ContainsAny(parsed.Address, "
-")
+    return err == nil && parsed.Address == value && !strings.ContainsAny(parsed.Address, "\r\n")
 }
 
 func requestPasswordReset(db *sql.DB, w http.ResponseWriter, r *http.Request) {
