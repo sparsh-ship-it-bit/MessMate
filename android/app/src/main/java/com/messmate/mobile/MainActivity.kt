@@ -276,8 +276,12 @@ class MainActivity : AppCompatActivity() {
             novaCharacteristic = characteristic
             novaGattServer = manager.openGattServer(this, object : BluetoothGattServerCallback() {
                 override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-                    if (newState == BluetoothProfile.STATE_CONNECTED) novaConnectedDevices.add(device)
+                    if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) novaConnectedDevices.add(device)
                     else novaConnectedDevices.remove(device)
+                    val state = if (novaConnectedDevices.isNotEmpty()) "connected" else "advertising"
+                    runOnUiThread {
+                        if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-status',{detail:'$state'}))", null)
+                    }
                 }
                 override fun onServiceAdded(status: Int, service: BluetoothGattService) {
                     if (status == BluetoothGatt.GATT_SUCCESS && service.uuid == NOVA_SERVICE_UUID) startNovaAdvertising(adapter)
