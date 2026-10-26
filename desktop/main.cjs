@@ -115,12 +115,13 @@ function createWindow() {
     }
   });
 
+  let bluetoothChooserOpen = false;
   mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
     event.preventDefault();
-    if (!devices || devices.length === 0) {
-      callback('');
-      return;
-    }
+    // Chromium emits an empty list while discovery starts. Keep scanning until
+    // a device appears instead of cancelling the Web Bluetooth request.
+    if (!devices || devices.length === 0 || bluetoothChooserOpen) return;
+    bluetoothChooserOpen = true;
     const labels = devices.map((device, index) => {
       const name = String(device.deviceName || '').trim();
       return name ? name + ' (' + (index + 1) + ')' : 'Nearby Bluetooth device ' + (index + 1);
@@ -136,7 +137,7 @@ function createWindow() {
       noLink: true
     }).then(({ response }) => {
       callback(response >= 0 && response < devices.length ? devices[response].deviceId : '');
-    }).catch(() => callback(''));
+    }).catch(() => callback('')).finally(() => { bluetoothChooserOpen = false; });
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
