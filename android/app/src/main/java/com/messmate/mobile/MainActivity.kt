@@ -272,6 +272,9 @@ class MainActivity : AppCompatActivity() {
                     if (newState == BluetoothProfile.STATE_CONNECTED) novaConnectedDevices.add(device)
                     else novaConnectedDevices.remove(device)
                 }
+                override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+                    if (status == BluetoothGatt.GATT_SUCCESS && service.uuid == NOVA_SERVICE_UUID) startNovaAdvertising(adapter)
+                }
                 override fun onDescriptorWriteRequest(device: BluetoothDevice, requestId: Int, descriptor: android.bluetooth.BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray) {
                     descriptor.value = value
                     if (responseNeeded) novaGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -283,6 +286,17 @@ class MainActivity : AppCompatActivity() {
                 }
             })
             novaGattServer?.addService(service)
+            // Advertising starts from onServiceAdded after the GATT service is ready.
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Allow Bluetooth permissions to use Nova Link.", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Nova Link Bluetooth is unavailable on this phone.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startNovaAdvertising(adapter: BluetoothAdapter) {
+        try {
             val advertiser = adapter.bluetoothLeAdvertiser ?: return
             advertiser.startAdvertising(
                 AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY).setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).setConnectable(true).build(),
@@ -292,11 +306,15 @@ class MainActivity : AppCompatActivity() {
                     override fun onStartFailure(errorCode: Int) { runOnUiThread { Toast.makeText(this@MainActivity, "Nova Link Bluetooth could not start ($errorCode).", Toast.LENGTH_LONG).show() } }
                 }
             )
-        } catch (_: SecurityException) {
-            Toast.makeText(this, "Allow Bluetooth permissions to use Nova Link.", Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
-            Toast.makeText(this, "Nova Link Bluetooth is unavailable on this phone.", Toast.LENGTH_LONG).show()
+            runOnUiThread { Toast.makeText(this, "Nova Link could not start Bluetooth advertising.", Toast.LENGTH_LONG).show() }
         }
+    }
+
+    @Deprecated("Deprecated in Android")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7401 && grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startNovaBluetooth()
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
