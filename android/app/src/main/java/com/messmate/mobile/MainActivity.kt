@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private val novaDiscoveredDevices = linkedMapOf<String, BluetoothDevice>()
     private var novaScanCallback: ScanCallback? = null
     private var novaClientGatt: BluetoothGatt? = null
+    private var novaClientCharacteristic: BluetoothGattCharacteristic? = null
 
     private val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -117,16 +118,17 @@ class MainActivity : AppCompatActivity() {
                 return try {
                     val action = JSONObject(commandJson).optString("action", "").trim()
                     if (action !in setOf("dashboard", "consumers", "payments", "attendance", "workers", "reports", "refresh")) return false
-                    // Keep commands within the default BLE ATT notification payload (20 bytes).
                     val payload = action.toByteArray(Charsets.UTF_8)
-                    val characteristic = novaCharacteristic ?: return false
-                    runOnUiThread {
+                    val gatt = novaClientGatt ?: return false
+                    val characteristic = novaClientCharacteristic ?: return false
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        gatt.writeCharacteristic(characteristic, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == android.bluetooth.BluetoothStatusCodes.SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
                         characteristic.value = payload
-                        novaConnectedDevices.toList().forEach { device ->
-                            notifyNovaCharacteristic(device, characteristic)
-                        }
+                        @Suppress("DEPRECATION")
+                        gatt.writeCharacteristic(characteristic)
                     }
-                    novaConnectedDevices.isNotEmpty()
                 } catch (_: Exception) { false }
             }
             @JavascriptInterface
@@ -194,12 +196,18 @@ class MainActivity : AppCompatActivity() {
                                 gatt.discoverServices()
                             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                                 gatt.close()
-                                if (novaClientGatt === gatt) novaClientGatt = null
+                                if (novaClientGatt === gatt) { novaClientGatt = null; novaClientCharacteristic = null }
                                 runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-client-status',{detail:'disconnected'}))", null) }
                             }
                         }
                         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                            val ready = status == BluetoothGatt.GATT_SUCCESS && gatt.getService(NOVA_SERVICE_UUID) != null
+                            val service = if (status == BluetoothGatt.GATT_SUCCESS) gatt.getService(NOVA_SERVICE_UUID) else null
+                            val characteristic = service?.getCharacteristic(NOVA_COMMAND_UUID)
+                            val ready = characteristic != null && (characteristic.properties and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0
+                            if (ready) {
+                                novaClientGatt = gatt
+                                novaClientCharacteristic = characteristic
+                            }
                             val state = if (ready) "connected" else "failed"
                             runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-client-status',{detail:'$state'}))", null) }
                             if (!ready) { gatt.disconnect(); gatt.close() }
