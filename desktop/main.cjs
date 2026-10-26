@@ -4,6 +4,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell, session } = require('electro
 const { autoUpdater } = require('electron-updater');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const configPath = path.join(__dirname, 'app-config.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -19,6 +20,8 @@ let splashWindow;
 let splashTimer;
 let startupReady = false;
 let updateCheckInProgress = false;
+let novaHostProcess = null;
+let novaHostStatus = 'starting';
 
 function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -93,6 +96,44 @@ function createSplashWindow() {
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
 }
 
+function startNovaBleHost() {
+  const executable = app.isPackaged
+    ? path.join(process.resourcesPath, 'native', 'NovaBleHost.exe')
+    : path.join(__dirname, 'native', 'out', 'NovaBleHost.exe');
+  if (!fs.existsSync(executable)) {
+    novaHostStatus = 'unavailable';
+    return;
+  }
+  try {
+    novaHostProcess = spawn(executable, [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let pending = '';
+    novaHostProcess.stdout.setEncoding('utf8');
+    novaHostProcess.stdout.on('data', chunk => {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || '';
+      for (const line of lines) {
+        try {
+          const message = JSON.parse(line);
+          if (message.type === 'status') {
+            novaHostStatus = message.state || 'unavailable';
+          } else if (message.type === 'command' && typeof message.action === 'string') {
+            const allowed = ['dashboard', 'consumers', 'payments', 'attendance', 'workers', 'reports', 'refresh'];
+            if (allowed.includes(message.action) && mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('messmate:nova-command', { type: 'nova-command', action: message.action });
+            }
+          }
+        } catch { /* Ignore non-protocol output. */ }
+      }
+    });
+    novaHostProcess.stderr.on('data', chunk => console.error('[Nova BLE]', String(chunk).trim()));
+    novaHostProcess.on('error', () => { novaHostStatus = 'unavailable'; });
+    novaHostProcess.on('exit', () => { novaHostProcess = null; novaHostStatus = 'unavailable'; });
+  } catch {
+    novaHostStatus = 'unavailable';
+  }
+}
+
 function createWindow() {
   createSplashWindow();
   // Keep the branded intro brief even if the hosted app takes longer to load.
@@ -113,31 +154,6 @@ function createWindow() {
       sandbox: true,
       webSecurity: true
     }
-  });
-
-  let bluetoothChooserOpen = false;
-  mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
-    event.preventDefault();
-    // Chromium emits an empty list while discovery starts. Keep scanning until
-    // a device appears instead of cancelling the Web Bluetooth request.
-    if (!devices || devices.length === 0 || bluetoothChooserOpen) return;
-    bluetoothChooserOpen = true;
-    const labels = devices.map((device, index) => {
-      const name = String(device.deviceName || '').trim();
-      return name ? name + ' (' + (index + 1) + ')' : 'Nearby Bluetooth device ' + (index + 1);
-    });
-    dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      title: 'Nova Link · Bluetooth',
-      message: 'Select the Android phone running MessMate Nova Link.',
-      detail: 'Keep Nova Link open on your phone and allow Bluetooth access when prompted.',
-      buttons: [...labels, 'Cancel'],
-      cancelId: labels.length,
-      defaultId: 0,
-      noLink: true
-    }).then(({ response }) => {
-      callback(response >= 0 && response < devices.length ? devices[response].deviceId : '');
-    }).catch(() => callback('')).finally(() => { bluetoothChooserOpen = false; });
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -172,6 +188,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('messmate:get-version', () => app.getVersion());
+  ipcMain.handle('messmate:nova-status', () => novaHostStatus);
   ipcMain.on('messmate:app-ready', (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     startupReady = true;
@@ -217,6 +234,7 @@ app.whenReady().then(() => {
     if (choice.response === 0) autoUpdater.quitAndInstall();
   });
 
+  startNovaBleHost();
   createWindow();
 
   if (app.isPackaged) {
@@ -227,6 +245,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('before-quit', () => { try { novaHostProcess?.kill(); } catch { /* best effort */ } });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
