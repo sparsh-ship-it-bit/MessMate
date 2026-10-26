@@ -109,8 +109,10 @@ class MainActivity : AppCompatActivity() {
             @JavascriptInterface
             fun sendNovaCommand(commandJson: String): Boolean {
                 return try {
-                    val payload = commandJson.toByteArray(Charsets.UTF_8)
-                    if (payload.size > 480) return false
+                    val action = JSONObject(commandJson).optString("action", "").trim()
+                    if (action !in setOf("dashboard", "consumers", "payments", "attendance", "workers", "reports", "refresh")) return false
+                    // Keep commands within the default BLE ATT notification payload (20 bytes).
+                    val payload = action.toByteArray(Charsets.UTF_8)
                     val characteristic = novaCharacteristic ?: return false
                     runOnUiThread {
                         characteristic.value = payload
