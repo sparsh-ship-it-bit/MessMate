@@ -22,6 +22,11 @@ let startupReady = false;
 let updateCheckInProgress = false;
 let novaHostProcess = null;
 let novaHostStatus = 'starting';
+let novaHostDiagnostic = { state: 'starting', message: 'Starting Nova Link Bluetooth host.' };
+function setNovaHostStatus(state, message, details = '') {
+  novaHostStatus = state;
+  novaHostDiagnostic = { state, message, ...(details ? { details } : {}) };
+}
 
 function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -101,7 +106,7 @@ function startNovaBleHost() {
     ? path.join(process.resourcesPath, 'native', 'NovaBleHost.exe')
     : path.join(__dirname, 'native', 'out', 'NovaBleHost.exe');
   if (!fs.existsSync(executable)) {
-    novaHostStatus = 'unavailable';
+    setNovaHostStatus('unavailable', 'Nova Link Bluetooth host executable is missing.', `Expected file: ${executable}`);
     return;
   }
   try {
@@ -116,7 +121,7 @@ function startNovaBleHost() {
         try {
           const message = JSON.parse(line);
           if (message.type === 'status') {
-            novaHostStatus = message.state || 'unavailable';
+            setNovaHostStatus(message.state || 'unavailable', message.message || (message.state === 'advertising' ? 'Bluetooth advertising is ready.' : 'Bluetooth host reported an unavailable state.'), message.error || '');
           } else if (message.type === 'command' && typeof message.action === 'string') {
             const allowed = ['dashboard', 'consumers', 'payments', 'attendance', 'workers', 'reports', 'refresh'];
             if (allowed.includes(message.action) && mainWindow && !mainWindow.isDestroyed()) {
@@ -126,11 +131,22 @@ function startNovaBleHost() {
         } catch { /* Ignore non-protocol output. */ }
       }
     });
-    novaHostProcess.stderr.on('data', chunk => console.error('[Nova BLE]', String(chunk).trim()));
-    novaHostProcess.on('error', () => { novaHostStatus = 'unavailable'; });
-    novaHostProcess.on('exit', () => { novaHostProcess = null; novaHostStatus = 'unavailable'; });
-  } catch {
-    novaHostStatus = 'unavailable';
+    novaHostProcess.stderr.on('data', chunk => {
+      const details = String(chunk).trim().slice(0, 1000);
+      setNovaHostStatus('unavailable', 'Nova Link Bluetooth host wrote an error.', details);
+    });
+    novaHostProcess.on('error', error => {
+      setNovaHostStatus('unavailable', 'Windows could not start the Nova Link Bluetooth host.', error?.message || 'Process start failed.');
+    });
+    novaHostProcess.on('exit', (code, signal) => {
+      novaHostProcess = null;
+      if (novaHostStatus !== 'advertising') setNovaHostStatus('unavailable', 'Nova Link Bluetooth host stopped.', `Exit code: ${code ?? 'unknown'}; signal: ${signal ?? 'none'}`);
+    });
+    setTimeout(() => {
+      if (novaHostStatus === 'starting') setNovaHostStatus('unavailable', 'Nova Link Bluetooth host did not report a status in time.', 'Check Windows Bluetooth support and the NovaBleHost executable.');
+    }, 10000).unref?.();
+  } catch (error) {
+    setNovaHostStatus('unavailable', 'Could not launch the Nova Link Bluetooth host.', error?.message || 'Unknown startup error.');
   }
 }
 
@@ -189,6 +205,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('messmate:get-version', () => app.getVersion());
   ipcMain.handle('messmate:nova-status', () => novaHostStatus);
+  ipcMain.handle('messmate:nova-diagnostics', () => novaHostDiagnostic);
   ipcMain.on('messmate:app-ready', (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     startupReady = true;
