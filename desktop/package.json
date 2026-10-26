@@ -7,9 +7,10 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check main.cjs && node --check preload.cjs",
-    "dist:win": "npm run build:icon && electron-builder --win nsis --publish never",
-    "release:win": "npm run build:icon && electron-builder --win nsis --publish always",
-    "build:icon": "node generate-icon.cjs"
+    "dist:win": "npm run build:icon && npm run build:nova && electron-builder --win nsis --publish never",
+    "release:win": "npm run build:icon && npm run build:nova && electron-builder --win nsis --publish always",
+    "build:icon": "node generate-icon.cjs",
+    "build:nova": "dotnet publish native/NovaBleHost.csproj -c Release -r win-x64 --self-contained true -o native/out"
   },
   "dependencies": {
     "electron-updater": "6.6.2"
@@ -63,6 +64,17 @@
         "owner": "sparsh-ship-it-bit",
         "repo": "MessMate",
         "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "native/out",
+        "to": "native",
+        "filter": [
+          "NovaBleHost.exe",
+          "*.dll",
+          "*.json"
+        ]
       }
     ]
   }
