@@ -206,6 +206,20 @@ app.whenReady().then(() => {
   ipcMain.handle('messmate:get-version', () => app.getVersion());
   ipcMain.handle('messmate:nova-status', () => novaHostStatus);
   ipcMain.handle('messmate:nova-diagnostics', () => novaHostDiagnostic);
+  ipcMain.handle('messmate:nova-restart', async () => {
+    if (novaHostStatus === 'advertising' && novaHostProcess && !novaHostProcess.killed) {
+      return novaHostDiagnostic;
+    }
+    const previous = novaHostProcess;
+    novaHostProcess = null;
+    if (previous && !previous.killed) {
+      try { previous.kill(); } catch { /* Continue with a fresh host. */ }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    setNovaHostStatus('starting', 'Restarting Nova Link Bluetooth host.');
+    startNovaBleHost();
+    return novaHostDiagnostic;
+  });
   ipcMain.on('messmate:app-ready', (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     startupReady = true;
