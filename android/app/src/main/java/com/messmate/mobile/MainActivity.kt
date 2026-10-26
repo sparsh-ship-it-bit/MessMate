@@ -153,7 +153,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     val scanner = adapter.bluetoothLeScanner ?: return false
                     novaDiscoveredDevices.clear()
-                    val filter = android.bluetooth.le.ScanFilter.Builder().setServiceUuid(ParcelUuid(NOVA_SERVICE_UUID)).build()
+                    // Windows may expose the GATT service without placing its UUID
+                    // in the legacy advertisement payload. Scan unfiltered, then validate
+                    // the Nova service after the user selects a discovered BLE device.
                     val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
                     val callback = object : ScanCallback() {
                         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -169,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     novaScanCallback = callback
-                    scanner.startScan(listOf(filter), settings, callback)
+                    scanner.startScan(settings, callback)
                     runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-scan-started'))", null) }
                     true
                 } catch (_: Exception) { false }
