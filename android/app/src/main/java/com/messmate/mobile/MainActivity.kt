@@ -12,6 +12,9 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.os.ParcelUuid
@@ -62,6 +65,9 @@ class MainActivity : AppCompatActivity() {
     private var novaGattServer: BluetoothGattServer? = null
     private var novaCharacteristic: BluetoothGattCharacteristic? = null
     private val novaConnectedDevices = mutableSetOf<BluetoothDevice>()
+    private val novaDiscoveredDevices = linkedMapOf<String, BluetoothDevice>()
+    private var novaScanCallback: ScanCallback? = null
+    private var novaClientGatt: BluetoothGatt? = null
 
     private val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -125,6 +131,83 @@ class MainActivity : AppCompatActivity() {
             }
             @JavascriptInterface
             fun novaLinkStatus(): String = if (novaConnectedDevices.isNotEmpty()) "connected" else "advertising"
+            @JavascriptInterface
+            fun startNovaScan(): Boolean {
+                return try {
+                    val manager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+                    val adapter = manager.adapter ?: return false
+                    if (!adapter.isEnabled) {
+                        runOnUiThread { startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
+                        return false
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                        runOnUiThread { requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT), 7402) }
+                        return false
+                    }
+                    val scanner = adapter.bluetoothLeScanner ?: return false
+                    novaDiscoveredDevices.clear()
+                    val filter = android.bluetooth.le.ScanFilter.Builder().setServiceUuid(ParcelUuid(NOVA_SERVICE_UUID)).build()
+                    val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+                    val callback = object : ScanCallback() {
+                        override fun onScanResult(callbackType: Int, result: ScanResult) {
+                            val device = result.device
+                            val id = device.address
+                            novaDiscoveredDevices[id] = device
+                            val name = try { device.name ?: result.scanRecord?.deviceName ?: "Nova device" } catch (_: SecurityException) { "Nova device" }
+                            val item = JSONObject().put("id", id).put("name", name).put("rssi", result.rssi)
+                            runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-device',{detail:${JSONObject.quote(item.toString())}}))", null) }
+                        }
+                        override fun onScanFailed(errorCode: Int) {
+                            runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-scan-error',{detail:'Bluetooth scan failed ($errorCode)'}))", null) }
+                        }
+                    }
+                    novaScanCallback = callback
+                    scanner.startScan(listOf(filter), settings, callback)
+                    runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-scan-started'))", null) }
+                    true
+                } catch (_: Exception) { false }
+            }
+            @JavascriptInterface
+            fun stopNovaScan() {
+                try {
+                    val manager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+                    manager.adapter?.bluetoothLeScanner?.let { scanner -> novaScanCallback?.let { scanner.stopScan(it) } }
+                } catch (_: Exception) { }
+                novaScanCallback = null
+            }
+            @JavascriptInterface
+            fun connectNovaDevice(deviceId: String): Boolean {
+                return try {
+                    stopNovaScan()
+                    val device = novaDiscoveredDevices[deviceId] ?: return false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                        runOnUiThread { requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 7402) }
+                        return false
+                    }
+                    novaClientGatt?.close()
+                    novaClientGatt = device.connectGatt(this@MainActivity, false, object : android.bluetooth.BluetoothGattCallback() {
+                        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
+                                novaClientGatt = gatt
+                                gatt.discoverServices()
+                            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                                gatt.close()
+                                if (novaClientGatt === gatt) novaClientGatt = null
+                                runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-client-status',{detail:'disconnected'}))", null) }
+                            }
+                        }
+                        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                            val ready = status == BluetoothGatt.GATT_SUCCESS && gatt.getService(NOVA_SERVICE_UUID) != null
+                            val state = if (ready) "connected" else "failed"
+                            runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('messmate:nova-client-status',{detail:'$state'}))", null) }
+                            if (!ready) { gatt.disconnect(); gatt.close() }
+                        }
+                    }, BluetoothDevice.TRANSPORT_LE)
+                    true
+                } catch (_: Exception) { false }
+            }
             @JavascriptInterface
             fun dialPhone(number: String) {
                 runOnUiThread {
