@@ -7,7 +7,7 @@ on:
         description: "Android release version (for example 1.0.8)"
         required: true
         type: string
-        default: "1.0.8"
+        default: "1.0.16"
   push:
     branches:
       - main
