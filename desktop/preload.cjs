@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('messMateDesktop', {
   getVersion: () => ipcRenderer.invoke('messmate:get-version'),
   getNovaStatus: () => ipcRenderer.invoke('messmate:nova-status'),
+  getNovaDiagnostics: () => ipcRenderer.invoke('messmate:nova-diagnostics'),
   onNovaCommand: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, command) => callback(command);
