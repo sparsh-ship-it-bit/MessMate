@@ -37,10 +37,7 @@
       "package.json",
       "generate-icon.cjs",
       "assets/messmate.svg",
-      "assets/messmate.ico",
-      "generate-mac-icon.cjs",
-      "assets/messmate.icns",
-      "assets/messmate-icon.png"
+      "assets/messmate.ico"
     ],
     "win": {
       "target": [
@@ -52,7 +49,18 @@
         }
       ],
       "artifactName": "MessMate-Setup-${version}.${ext}",
-      "icon": "assets/messmate.ico"
+      "icon": "assets/messmate.ico",
+      "extraResources": [
+        {
+          "from": "native/out",
+          "to": "native",
+          "filter": [
+            "NovaBleHost.exe",
+            "*.dll",
+            "*.json"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
