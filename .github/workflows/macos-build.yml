@@ -1,0 +1,48 @@
+name: macOS Desktop Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/macos-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate desktop code
+        run: npm run check
+
+      - name: Build macOS app packages
+        run: npm run dist:mac
+
+      - name: Upload macOS installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: MessMate-macOS-${{ github.run_number }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
