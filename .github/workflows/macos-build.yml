@@ -9,7 +9,7 @@ on:
       - ".github/workflows/macos-build.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-macos:
@@ -35,7 +35,7 @@ jobs:
       - name: Build macOS app packages
         run: npm run dist:mac
 
-      - name: Upload macOS installers
+      - name: Upload macOS installers as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: MessMate-macOS-${{ github.run_number }}
@@ -44,3 +44,24 @@ jobs:
             desktop/dist/*.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish macOS installers in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: macos-v1.0.0
+          name: MessMate macOS v1.0.0
+          body: |
+            ## MessMate for macOS
+
+            First macOS desktop build for Apple Silicon and Intel Macs.
+
+            - Download the DMG to install MessMate.
+            - ZIP archives are provided as an alternative distribution format.
+            - Nova Link Bluetooth host functionality is currently Windows-only.
+          files: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
