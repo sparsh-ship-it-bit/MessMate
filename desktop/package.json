@@ -1,16 +1,17 @@
 {
   "name": "messmate-desktop",
   "version": "1.0.12",
-  "description": "MessMate Windows desktop app",
+  "description": "MessMate desktop app for Windows and macOS",
   "private": true,
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check generate-icon.cjs && node --check generate-mac-icon.cjs",
     "dist:win": "npm run build:icon && npm run build:nova && electron-builder --win nsis --publish never",
     "release:win": "npm run build:icon && npm run build:nova && electron-builder --win nsis --publish always",
     "build:icon": "node generate-icon.cjs",
-    "build:nova": "dotnet publish native/NovaBleHost.csproj -c Release -r win-x64 --self-contained true -o native/out"
+    "build:nova": "dotnet publish native/NovaBleHost.csproj -c Release -r win-x64 --self-contained true -o native/out",
+    "dist:mac": "npm run build:icon && node generate-mac-icon.cjs && electron-builder --mac dmg zip --publish never"
   },
   "dependencies": {
     "electron-updater": "6.6.2"
@@ -36,7 +37,10 @@
       "package.json",
       "generate-icon.cjs",
       "assets/messmate.svg",
-      "assets/messmate.ico"
+      "assets/messmate.ico",
+      "generate-mac-icon.cjs",
+      "assets/messmate.icns",
+      "assets/messmate-icon.png"
     ],
     "win": {
       "target": [
@@ -66,16 +70,28 @@
         "releaseType": "release"
       }
     ],
-    "extraResources": [
-      {
-        "from": "native/out",
-        "to": "native",
-        "filter": [
-          "NovaBleHost.exe",
-          "*.dll",
-          "*.json"
-        ]
-      }
-    ]
+    "extraResources": [],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "MessMate-${version}-${arch}.${ext}",
+      "icon": "assets/messmate.icns",
+      "category": "public.app-category.business",
+      "hardenedRuntime": false
+    }
   }
 }
