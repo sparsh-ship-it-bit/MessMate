@@ -102,6 +102,10 @@ function createSplashWindow() {
 }
 
 function startNovaBleHost() {
+  if (process.platform !== 'win32') {
+    setNovaHostStatus('unavailable', 'Nova Link Bluetooth host is currently available only in the Windows desktop build.');
+    return;
+  }
   const executable = app.isPackaged
     ? path.join(process.resourcesPath, 'native', 'NovaBleHost.exe')
     : path.join(__dirname, 'native', 'out', 'NovaBleHost.exe');
