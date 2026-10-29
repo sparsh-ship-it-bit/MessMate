@@ -299,8 +299,42 @@ class MainActivity : AppCompatActivity() {
             splashContent.addView(ImageView(this@MainActivity).apply {
                 setImageResource(R.drawable.messmate_icon)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                contentDescription = "MessMate"
-            }, LinearLayout.LayoutParams(dp(132), dp(132)))
+                contentDescription = "MessMate logo"
+            }, LinearLayout.LayoutParams(dp(112), dp(112)))
+
+            splashContent.addView(TextView(this@MainActivity).apply {
+                text = "MessMate"
+                textSize = 27f
+                setTextColor(Color.BLACK)
+                typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                letterSpacing = 0.01f
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) })
+
+            // Singhal Technologies (SLT) wordmark appears directly beneath MessMate.
+            splashContent.addView(TextView(this@MainActivity).apply {
+                text = "SLT"
+                textSize = 20f
+                setTextColor(Color.BLACK)
+                typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD_ITALIC)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                letterSpacing = 0.16f
+                setPadding(dp(12), dp(4), dp(12), dp(4))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(2), Color.BLACK)
+                    cornerRadius = dp(7).toFloat()
+                }
+                contentDescription = "SLT, Singhal Technologies logo"
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) })
 
             val dots = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
