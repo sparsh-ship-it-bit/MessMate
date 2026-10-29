@@ -594,3 +594,41 @@ html {
 .password-toggle:hover,.password-toggle:focus-visible{color:var(--green);border-color:#647c2a;background:#182318!important;box-shadow:0 0 0 3px rgba(198,255,0,.08)!important;outline:none}
 
 .profile-contact{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;margin:14px 0;border:1px solid #29382c;background:linear-gradient(120deg,#101a12,#0b0b0b);border-radius:14px}.profile-contact b,.profile-contact small{display:block}.profile-contact small{color:#879387;margin-top:5px;font-size:12px}.profile-contact button{white-space:nowrap}.profile-contact button:disabled{opacity:.48;cursor:not-allowed;box-shadow:none}@media(max-width:650px){.profile-contact{align-items:flex-start;flex-direction:column}.profile-contact button{width:100%}}
+
+
+/* Readable content sizing across every tab except Overview, matching Subscriptions. */
+.content.standard-tab .panel .row .grow b,
+.content.standard-tab .panel .row .grow strong,
+.content.standard-tab .panel .panel-head h3,
+.content.standard-tab .panel > h3,
+.content.standard-tab .panel .consumer-summary,
+.content.standard-tab .panel .profile-toolbar,
+.content.standard-tab .panel .calendar-title,
+.content.standard-tab .panel .meal-title,
+.content.standard-tab .panel .status-line,
+.content.standard-tab .panel .meal-graph .graph-top,
+.content.standard-tab .panel .profile-finance b,
+.content.standard-tab .panel .month-banner b,
+.content.standard-tab .panel .report-grid b {
+  font-size: 16px;
+  line-height: 1.4;
+}
+.content.standard-tab .panel .row .grow small,
+.content.standard-tab .panel .muted-small,
+.content.standard-tab .panel .report-grid span,
+.content.standard-tab .panel .profile-finance span,
+.content.standard-tab .panel .meal-graph small,
+.content.standard-tab .panel .month-banner span,
+.content.standard-tab .panel .empty {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.content.standard-tab .panel .badge { font-size: 12px; }
+.content.standard-tab .panel .ghost,
+.content.standard-tab .panel .danger,
+.content.standard-tab .panel .small { font-size: 13px; }
+@media(max-width:650px){
+  .content.standard-tab .panel .row .grow b,
+  .content.standard-tab .panel .row .grow strong { font-size: 16px; }
+  .content.standard-tab .panel .row .grow small { font-size: 12px; }
+}
