@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"os"
 	"strings"
 	"sync"
@@ -103,7 +104,7 @@ func securityMiddleware(next http.Handler) http.Handler {
 			}
 			key := ip + "|" + r.URL.Path
 			if !allowRateLimit(key, limit, window, time.Now()) {
-				w.Header().Set("Retry-After", window.String())
+				w.Header().Set("Retry-After", strconv.Itoa(max(1, int(window.Seconds()))))
 				errorJSON(w, http.StatusTooManyRequests, "too many requests; please try again later")
 				return
 			}
@@ -122,6 +123,10 @@ func sensitiveRouteLimit(path string) (int, time.Duration) {
 		return 5, time.Hour
 	case "/api/v1/mobile/pair":
 		return 8, 5 * time.Minute
+	case "/api/v1/mobile/pairing":
+		return 5, 5 * time.Minute
+	case "/api/v1/auth/reset-password":
+		return 5, time.Hour
 	default:
 		return 0, 0
 	}
