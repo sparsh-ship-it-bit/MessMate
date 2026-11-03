@@ -97,8 +97,8 @@ func main() {
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
     registerWeb(mux, db)
-    handler := securityMiddleware(cors(logging(mux)))    port := getenv("PORT", "8080")
-    log.Printf("MessMate listening on :%s", port)
+    handler := securityMiddleware(cors(logging(mux)))
+    port := getenv("PORT", "8080")    log.Printf("MessMate listening on :%s", port)
     server := &http.Server{
         Addr:              ":" + port,
         Handler:           handler,
@@ -197,8 +197,7 @@ func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
     if err!=nil { log.Printf("createConsumer meal plan validation failed: %v",err); errorJSON(w,400,err.Error()); return }
     if req.ConsumerID=="" { req.ConsumerID="MM-"+strings.ToUpper(randomID()[:8]) }
     if req.StartDate=="" { log.Printf("createConsumer validation failed: start_date missing"); errorJSON(w,400,"start_date is required"); return }
-    if req.EndDate=="" { startTmp,e:=time.Parse("2006-01-02",req.StartDate); if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }; req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02") }
-    startDate,e:=time.Parse("2006-01-02",req.StartDate)
+    if req.EndDate=="" { startTmp,e:=time.Parse("2006-01-02",req.StartDate); if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }; req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02") }    startDate,e:=time.Parse("2006-01-02",req.StartDate)
     if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }    endDate,e:=time.Parse("2006-01-02",req.EndDate)
     if e!=nil||endDate.Before(startDate) { log.Printf("createConsumer invalid end_date %q for start_date %q: %v",req.EndDate,req.StartDate,e); errorJSON(w,400,"invalid end_date"); return }
     if req.Amount<=0 { log.Printf("createConsumer validation failed: amount must be positive (amount=%v)",req.Amount); errorJSON(w,400,"amount must be greater than 0"); return }
@@ -297,8 +296,7 @@ func (a *App) workerAttendanceHistory(w http.ResponseWriter,r *http.Request) {
  days:=[]map[string]any{};byDate:=map[string]map[string]any{}
  for rows.Next(){var date string;var sessionID uuid.UUID;var inTime time.Time;var outTime sql.NullTime;var minutes int64
   if err=rows.Scan(&date,&sessionID,&inTime,&outTime,&minutes);err!=nil{errorJSON(w,500,"could not read worker history");return}
-  day:=byDate[date];if day==nil{day=map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":int64(0),"total_worked_minutes":int64(0),"sessions":[]map[string]any{}};byDate[date]=day;days=append(days,day)}
-  sessions:=day["sessions"].([]map[string]any);sessions=append(sessions,map[string]any{"id":sessionID,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":func()string{if outTime.Valid{return "complete"};return "in"}()});day["sessions"]=sessions  total:=day["total_worked_minutes"].(int64)+minutes;day["total_worked_minutes"]=total;day["worked_minutes"]=total;day["session_count"]=len(sessions);day["out_time"]=nullableWorkerTime(outTime)
+  day:=byDate[date];if day==nil{day=map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":int64(0),"total_worked_minutes":int64(0),"sessions":[]map[string]any{}};byDate[date]=day;days=append(days,day)}  sessions:=day["sessions"].([]map[string]any);sessions=append(sessions,map[string]any{"id":sessionID,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":func()string{if outTime.Valid{return "complete"};return "in"}()});day["sessions"]=sessions  total:=day["total_worked_minutes"].(int64)+minutes;day["total_worked_minutes"]=total;day["worked_minutes"]=total;day["session_count"]=len(sessions);day["out_time"]=nullableWorkerTime(outTime)
  }
  if err=rows.Err();err!=nil{errorJSON(w,500,"could not read worker history");return}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
@@ -397,8 +395,7 @@ func (a *App) createSubscription(w http.ResponseWriter, r *http.Request) {
     }
     if err = tx.Commit(); err != nil {
         log.Printf("createSubscription commit failed: %v", err)
-        errorJSON(w, http.StatusInternalServerError, "could not save subscription")        return
-    }
+        errorJSON(w, http.StatusInternalServerError, "could not save subscription")        return    }
 
     writeJSON(w, http.StatusCreated, map[string]any{
         "id": sid,
@@ -497,7 +494,6 @@ func (a *App) createPayment(w http.ResponseWriter, r *http.Request) {
         log.Printf("createPayment insert failed: %v", err)
         errorJSON(w, http.StatusInternalServerError, "payment failed")
         return    }
-
     newPaid := paid + req.Amount
     if _, err = tx.Exec(`UPDATE subscriptions SET amount_paid=$1,payment_status=$2 WHERE id=$3`,
         newPaid, paymentStatus(total, newPaid), sid); err != nil {
