@@ -6,6 +6,8 @@ import (
   "crypto/sha256"
   "encoding/hex"
   "fmt"
+  "math/big"
+  "crypto/hmac"
   "net/http"
   "strings"
   "time"
@@ -18,26 +20,30 @@ type pairingExchangeRequest struct { Code string `json:"code"` }
 type mobileScanRequest struct { Value string `json:"value"`; Meal string `json:"meal"` }
 
 func hashPairSecret(s string) string { h:=sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+func hashPairCode(code string, pepper []byte) string {
+  mac:=hmac.New(sha256.New,pepper)
+  _,_=mac.Write([]byte(code))
+  return hex.EncodeToString(mac.Sum(nil))
+}
 func securePairSecret(n int) (string,error) { b:=make([]byte,n); if _,err:=rand.Read(b);err!=nil{return "",err}; return hex.EncodeToString(b),nil }
 
 func (a *App) createMobilePairing(w http.ResponseWriter,r *http.Request) {
   oid,err:=ownerID(r); if err!=nil { errorJSON(w,401,"authentication required"); return }
-  code,err:=securePairSecret(3); if err!=nil { errorJSON(w,500,"could not create pairing code"); return }
-  code=fmt.Sprintf("%06d", (int(code[0])<<16|int(code[1])<<8|int(code[2]))%1000000)
+  number,err:=rand.Int(rand.Reader,big.NewInt(1000000)); if err!=nil { errorJSON(w,500,"could not create pairing code"); return }
+  code:=fmt.Sprintf("%06d",number.Int64())
   expires:=time.Now().Add(5*time.Minute)
-  _,err=a.db.Exec(`INSERT INTO mobile_pairings(owner_id,code_hash,expires_at) VALUES($1,$2,$3)`,oid,hashPairSecret(code),expires)
+  _,err=a.db.Exec(`INSERT INTO mobile_pairings(owner_id,code_hash,expires_at) VALUES($1,$2,$3)`,oid,hashPairCode(code,a.jwtSecret),expires)
   if err!=nil { errorJSON(w,500,"could not create pairing code"); return }
   writeJSON(w,201,map[string]any{"code":code,"expires_at":expires,"mobile_url":"/mobile-scan.html"})
 }
 
 func (a *App) exchangeMobilePairing(w http.ResponseWriter,r *http.Request) {
   var req pairingExchangeRequest
-  req.Code=strings.TrimSpace(req.Code)
   if decode(r,&req)!=nil || len(strings.TrimSpace(req.Code))!=6 { errorJSON(w,400,"enter the six-digit pairing code"); return }
   req.Code=strings.TrimSpace(req.Code)
   token,err:=securePairSecret(32); if err!=nil { errorJSON(w,500,"could not pair device"); return }
   var pairingID,owner uuid.UUID
-  err=a.db.QueryRow(`UPDATE mobile_pairings SET device_token_hash=$1,paired_at=NOW(),code_hash=NULL WHERE code_hash=$2 AND expires_at>NOW() AND paired_at IS NULL RETURNING id,owner_id`,hashPairSecret(token),hashPairSecret(req.Code)).Scan(&pairingID,&owner)
+  err=a.db.QueryRow(`UPDATE mobile_pairings SET device_token_hash=$1,paired_at=NOW(),code_hash=NULL WHERE code_hash=$2 AND expires_at>NOW() AND paired_at IS NULL RETURNING id,owner_id`,hashPairSecret(token),hashPairCode(req.Code,a.jwtSecret)).Scan(&pairingID,&owner)
   if err!=nil { errorJSON(w,401,"pairing code is invalid, expired, or already used"); return }
   writeJSON(w,200,map[string]any{"device_token":token,"pairing_id":pairingID,"owner_id":owner,"owner_name":"MessMate","expires_in_days":30})
 }
