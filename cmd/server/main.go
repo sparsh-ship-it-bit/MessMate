@@ -97,14 +97,16 @@ func main() {
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
     registerWeb(mux, db)
-    handler := cors(logging(mux))
-    port := getenv("PORT", "8080")
+    handler := securityMiddleware(cors(logging(mux)))    port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
     server := &http.Server{
         Addr:              ":" + port,
         Handler:           handler,
         ReadHeaderTimeout: 5 * time.Second,
+        ReadTimeout:      15 * time.Second,
+        WriteTimeout:     30 * time.Second,
         IdleTimeout:       60 * time.Second,
+        MaxHeaderBytes:    1 << 20,
     }
     log.Fatal(server.ListenAndServe())
 }
@@ -197,8 +199,7 @@ func (a *App) createConsumer(w http.ResponseWriter,r *http.Request){
     if req.StartDate=="" { log.Printf("createConsumer validation failed: start_date missing"); errorJSON(w,400,"start_date is required"); return }
     if req.EndDate=="" { startTmp,e:=time.Parse("2006-01-02",req.StartDate); if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }; req.EndDate=time.Date(startTmp.Year(),startTmp.Month()+1,0,0,0,0,0,startTmp.Location()).Format("2006-01-02") }
     startDate,e:=time.Parse("2006-01-02",req.StartDate)
-    if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }
-    endDate,e:=time.Parse("2006-01-02",req.EndDate)
+    if e!=nil { log.Printf("createConsumer invalid start_date %q: %v",req.StartDate,e); errorJSON(w,400,"invalid start_date"); return }    endDate,e:=time.Parse("2006-01-02",req.EndDate)
     if e!=nil||endDate.Before(startDate) { log.Printf("createConsumer invalid end_date %q for start_date %q: %v",req.EndDate,req.StartDate,e); errorJSON(w,400,"invalid end_date"); return }
     if req.Amount<=0 { log.Printf("createConsumer validation failed: amount must be positive (amount=%v)",req.Amount); errorJSON(w,400,"amount must be greater than 0"); return }
     if req.AmountPaid<0||req.AmountPaid>req.Amount { log.Printf("createConsumer validation failed: amount_paid=%v amount=%v",req.AmountPaid,req.Amount); errorJSON(w,400,"amount paid must be between 0 and total amount"); return }
@@ -297,8 +298,7 @@ func (a *App) workerAttendanceHistory(w http.ResponseWriter,r *http.Request) {
  for rows.Next(){var date string;var sessionID uuid.UUID;var inTime time.Time;var outTime sql.NullTime;var minutes int64
   if err=rows.Scan(&date,&sessionID,&inTime,&outTime,&minutes);err!=nil{errorJSON(w,500,"could not read worker history");return}
   day:=byDate[date];if day==nil{day=map[string]any{"date":date,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":int64(0),"total_worked_minutes":int64(0),"sessions":[]map[string]any{}};byDate[date]=day;days=append(days,day)}
-  sessions:=day["sessions"].([]map[string]any);sessions=append(sessions,map[string]any{"id":sessionID,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":func()string{if outTime.Valid{return "complete"};return "in"}()});day["sessions"]=sessions
-  total:=day["total_worked_minutes"].(int64)+minutes;day["total_worked_minutes"]=total;day["worked_minutes"]=total;day["session_count"]=len(sessions);day["out_time"]=nullableWorkerTime(outTime)
+  sessions:=day["sessions"].([]map[string]any);sessions=append(sessions,map[string]any{"id":sessionID,"in_time":inTime,"out_time":nullableWorkerTime(outTime),"worked_minutes":minutes,"status":func()string{if outTime.Valid{return "complete"};return "in"}()});day["sessions"]=sessions  total:=day["total_worked_minutes"].(int64)+minutes;day["total_worked_minutes"]=total;day["worked_minutes"]=total;day["session_count"]=len(sessions);day["out_time"]=nullableWorkerTime(outTime)
  }
  if err=rows.Err();err!=nil{errorJSON(w,500,"could not read worker history");return}
  writeJSON(w,200,map[string]any{"worker_id":id,"name":name,"shift":shift,"attendance":days})
@@ -397,8 +397,7 @@ func (a *App) createSubscription(w http.ResponseWriter, r *http.Request) {
     }
     if err = tx.Commit(); err != nil {
         log.Printf("createSubscription commit failed: %v", err)
-        errorJSON(w, http.StatusInternalServerError, "could not save subscription")
-        return
+        errorJSON(w, http.StatusInternalServerError, "could not save subscription")        return
     }
 
     writeJSON(w, http.StatusCreated, map[string]any{
@@ -497,8 +496,7 @@ func (a *App) createPayment(w http.ResponseWriter, r *http.Request) {
         VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, cid, sid, req.Amount, req.Method, req.Reference, paidAt).Scan(&pid); err != nil {
         log.Printf("createPayment insert failed: %v", err)
         errorJSON(w, http.StatusInternalServerError, "payment failed")
-        return
-    }
+        return    }
 
     newPaid := paid + req.Amount
     if _, err = tx.Exec(`UPDATE subscriptions SET amount_paid=$1,payment_status=$2 WHERE id=$3`,
@@ -531,5 +529,5 @@ func (a *App) scanAttendance(w http.ResponseWriter,r *http.Request){
 func containsMeal(plan,meal string) bool { for _,m:=range strings.Split(plan,","){if m==meal{return true}};return false }
 func (a *App) todayAttendance(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.consumer_id,c.name,at.meal,at.scanned_at FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id='%s'::uuid AND at.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY at.scanned_at DESC`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var cid,name,meal string;var scanned time.Time;if rows.Scan(&cid,&name,&meal,&scanned)==nil{out=append(out,map[string]any{"consumer_id":cid,"name":name,"meal":meal,"scanned_at":scanned})}};writeJSON(w,200,out)}
 func logging(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){start:=time.Now();next.ServeHTTP(w,r);log.Printf("%s %s %s",r.Method,r.URL.Path,time.Since(start))})}
-func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PUT, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
+
 var _ = fmt.Sprintf
