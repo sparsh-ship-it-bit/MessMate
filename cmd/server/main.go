@@ -97,14 +97,17 @@ func main() {
     mux.HandleFunc("POST /api/v1/attendance/scan", app.auth(app.scanAttendance))
     mux.HandleFunc("GET /api/v1/attendance/today", app.auth(app.todayAttendance))
     registerWeb(mux, db)
-    handler := cors(logging(mux))
+    handler := securityMiddleware(cors(logging(mux)))
     port := getenv("PORT", "8080")
     log.Printf("MessMate listening on :%s", port)
     server := &http.Server{
         Addr:              ":" + port,
         Handler:           handler,
         ReadHeaderTimeout: 5 * time.Second,
+        ReadTimeout:       15 * time.Second,
+        WriteTimeout:      30 * time.Second,
         IdleTimeout:       60 * time.Second,
+        MaxHeaderBytes:    1 << 20,
     }
     log.Fatal(server.ListenAndServe())
 }
@@ -531,5 +534,5 @@ func (a *App) scanAttendance(w http.ResponseWriter,r *http.Request){
 func containsMeal(plan,meal string) bool { for _,m:=range strings.Split(plan,","){if m==meal{return true}};return false }
 func (a *App) todayAttendance(w http.ResponseWriter,r *http.Request){oid,_:=ownerID(r);rows,err:=a.db.Query(fmt.Sprintf(`SELECT c.consumer_id,c.name,at.meal,at.scanned_at FROM attendance at JOIN consumers c ON c.id=at.consumer_id WHERE c.owner_id='%s'::uuid AND at.attendance_date=(NOW() AT TIME ZONE 'Asia/Kolkata')::date ORDER BY at.scanned_at DESC`,oid.String()));if err!=nil{errorJSON(w,500,"database error");return};defer rows.Close();out:=[]map[string]any{};for rows.Next(){var cid,name,meal string;var scanned time.Time;if rows.Scan(&cid,&name,&meal,&scanned)==nil{out=append(out,map[string]any{"consumer_id":cid,"name":name,"meal":meal,"scanned_at":scanned})}};writeJSON(w,200,out)}
 func logging(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){start:=time.Now();next.ServeHTTP(w,r);log.Printf("%s %s %s",r.Method,r.URL.Path,time.Since(start))})}
-func cors(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Access-Control-Allow-Origin","*");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type");w.Header().Set("Access-Control-Allow-Methods","GET, POST, PUT, PATCH, DELETE, OPTIONS");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
+
 var _ = fmt.Sprintf
