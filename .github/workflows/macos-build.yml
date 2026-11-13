@@ -46,7 +46,7 @@ jobs:
           retention-days: 14
 
       - name: Publish macOS installers in GitHub Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: macos-v1.0.0
           name: MessMate macOS v1.0.0
